@@ -664,7 +664,7 @@ function App() {
     setAddProjectModal({
       step: null, githubUrl: '', projectId: null, projectPath: null,
       hasSpec: false, specContent: null, whatToBuild: '', successCriteria: '',
-      updateSpec: false, error: null,
+      updateSpec: false, error: null, repoMode: 'existing',
     })
   }
 

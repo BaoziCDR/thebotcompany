@@ -517,7 +517,6 @@ export async function runAgentWithAPI(opts) {
         {
           type: 'text',
           text: 'Begin your work now. Follow the instructions in the system prompt.',
-          cache_control: { type: 'ephemeral' },
         },
       ],
     },
@@ -538,6 +537,23 @@ export async function runAgentWithAPI(opts) {
         durationMs: Date.now() - startTime,
         timedOut: true,
       };
+    }
+
+    // Strip cache_control from all messages, then re-add to the last 2 user messages
+    // (Anthropic allows max 4 cache_control blocks: 1 system + up to 3 in messages)
+    for (const msg of messages) {
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          delete block.cache_control;
+        }
+      }
+    }
+    // Add cache_control to the last 2 user messages' last content block
+    const userMessages = messages.filter(m => m.role === 'user');
+    for (const um of userMessages.slice(-2)) {
+      if (Array.isArray(um.content) && um.content.length > 0) {
+        um.content[um.content.length - 1].cache_control = { type: 'ephemeral' };
+      }
     }
 
     // Build API request
@@ -626,13 +642,8 @@ export async function runAgentWithAPI(opts) {
         });
       }
 
-      // Add tool results to messages, with cache_control on the last one
-      const userMessage = { role: 'user', content: toolResults };
-      // Add cache_control to the last tool result
-      if (toolResults.length > 0) {
-        toolResults[toolResults.length - 1].cache_control = { type: 'ephemeral' };
-      }
-      messages.push(userMessage);
+      // Add tool results to messages (cache_control is managed at the top of the loop)
+      messages.push({ role: 'user', content: toolResults });
     } else {
       // Unknown stop reason, bail
       log(`Unexpected stop reason: ${response.stop_reason}`);

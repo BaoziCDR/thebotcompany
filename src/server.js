@@ -31,6 +31,14 @@ function maskToken(token) {
   return token.slice(0, 4) + '****' + token.slice(-4);
 }
 
+function detectTokenProvider(token) {
+  if (!token) return null;
+  if (token.startsWith('sk-ant-')) return 'anthropic';
+  if (token.startsWith('sk-proj-') || token.startsWith('sk-')) return 'openai';
+  if (token.startsWith('AIzaSy')) return 'google';
+  return 'unknown';
+}
+
 // Strip meta directive blocks from agent responses (keep human-readable text only)
 function stripMetaBlocks(text) {
   if (!text) return text;
@@ -1578,13 +1586,24 @@ class ProjectRunner {
 
     const agentModel = agent.rawModel || config.model || 'claude-opus-4-6';
 
-    // Resolve token: project-specific > global OAuth > global API key
+    // Resolve token: project-specific > global tokens by provider
     const projectToken = config.setupToken;
-    const globalToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
-    const resolvedToken = projectToken || globalToken || null;
+    const isOpenAIModel = agentModel.startsWith('openai/') || agentModel.startsWith('gpt-') || agentModel.startsWith('o3') || agentModel.startsWith('o4-');
+    const isGoogleModel = agentModel.startsWith('google/') || agentModel.startsWith('gemini-');
+
+    let resolvedToken;
+    if (projectToken) {
+      resolvedToken = projectToken;
+    } else if (isOpenAIModel) {
+      resolvedToken = process.env.OPENAI_API_KEY || null;
+    } else if (isGoogleModel) {
+      resolvedToken = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
+    } else {
+      resolvedToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
+    }
 
     if (!resolvedToken) {
-      log(`No setup token configured for ${agent.name} — using default auth.`, this.id);
+      log(`No API token configured for ${agent.name} (model: ${agentModel})`, this.id);
     }
 
     const agentEnv = {
@@ -1816,13 +1835,20 @@ const server = http.createServer(async (req, res) => {
   // --- Settings (global token) ---
 
   if (req.method === 'GET' && url.pathname === '/api/settings') {
-    const token = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
-    const tokenType = token ? (token.startsWith('sk-ant-oat') ? 'oauth' : 'api_key') : null;
+    const anthropicToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
+    const openaiToken = process.env.OPENAI_API_KEY || null;
+    const googleToken = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
+    // Backward compat: hasGlobalToken and globalTokenPreview refer to Anthropic
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      hasGlobalToken: !!token,
-      globalTokenPreview: token ? maskToken(token) : null,
-      tokenType,
+      hasGlobalToken: !!anthropicToken,
+      globalTokenPreview: anthropicToken ? maskToken(anthropicToken) : null,
+      tokenType: anthropicToken ? (anthropicToken.startsWith('sk-ant-oat') ? 'oauth' : 'api_key') : null,
+      providers: {
+        anthropic: { hasToken: !!anthropicToken, preview: anthropicToken ? maskToken(anthropicToken) : null },
+        openai: { hasToken: !!openaiToken, preview: openaiToken ? maskToken(openaiToken) : null },
+        google: { hasToken: !!googleToken, preview: googleToken ? maskToken(googleToken) : null },
+      },
     }));
     return;
   }
@@ -1833,31 +1859,62 @@ const server = http.createServer(async (req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { token } = JSON.parse(body);
+        const { token, provider: forceProvider } = JSON.parse(body);
         const envPath = path.join(TBC_HOME, '.env');
         let envContent = '';
         try { envContent = fs.readFileSync(envPath, 'utf-8'); } catch {}
 
-        // Clear both token types from .env
-        envContent = envContent
-          .replace(/^ANTHROPIC_AUTH_TOKEN=.*\n?/m, '')
-          .replace(/^ANTHROPIC_API_KEY=.*\n?/m, '');
-        delete process.env.ANTHROPIC_AUTH_TOKEN;
-        delete process.env.ANTHROPIC_API_KEY;
+        // Detect provider from token or explicit provider field
+        const provider = forceProvider || detectTokenProvider(token) || 'anthropic';
+
+        // Provider → env var mapping
+        const providerEnvVars = {
+          anthropic: ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+          openai: ['OPENAI_API_KEY'],
+          google: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+        };
+
+        // Clear existing env vars for this provider
+        const varsToClean = providerEnvVars[provider] || [];
+        for (const v of varsToClean) {
+          envContent = envContent.replace(new RegExp(`^${v}=.*\\n?`, 'm'), '');
+          delete process.env[v];
+        }
 
         if (token) {
-          // Auto-detect token type and store in the right env var
-          const isOAuth = token.startsWith('sk-ant-oat');
-          const envVar = isOAuth ? 'ANTHROPIC_AUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+          // Pick the right env var
+          let envVar;
+          if (provider === 'anthropic') {
+            envVar = token.startsWith('sk-ant-oat') ? 'ANTHROPIC_AUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+          } else if (provider === 'openai') {
+            envVar = 'OPENAI_API_KEY';
+          } else if (provider === 'google') {
+            envVar = 'GEMINI_API_KEY';
+          } else {
+            envVar = 'ANTHROPIC_API_KEY';
+          }
           envContent = envContent.trimEnd() + `\n${envVar}=${token}\n`;
           process.env[envVar] = token;
         }
 
         fs.writeFileSync(envPath, envContent);
-        const activeToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
-        const tokenType = activeToken ? (activeToken.startsWith('sk-ant-oat') ? 'oauth' : 'api_key') : null;
+
+        // Return updated status for all providers
+        const anthropicToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || null;
+        const openaiToken = process.env.OPENAI_API_KEY || null;
+        const googleToken = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, hasGlobalToken: !!activeToken, tokenType }));
+        res.end(JSON.stringify({
+          success: true,
+          provider,
+          hasGlobalToken: !!anthropicToken,
+          tokenType: anthropicToken ? (anthropicToken.startsWith('sk-ant-oat') ? 'oauth' : 'api_key') : null,
+          providers: {
+            anthropic: { hasToken: !!anthropicToken, preview: anthropicToken ? maskToken(anthropicToken) : null },
+            openai: { hasToken: !!openaiToken, preview: openaiToken ? maskToken(openaiToken) : null },
+            google: { hasToken: !!googleToken, preview: googleToken ? maskToken(googleToken) : null },
+          },
+        }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));

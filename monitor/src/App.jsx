@@ -77,6 +77,13 @@ function App() {
   const [projectTokenSaving, setProjectTokenSaving] = useState(false)
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const detectProvider = (token) => {
+    if (!token) return null
+    if (token.startsWith('sk-ant-')) return 'Anthropic'
+    if (token.startsWith('sk-proj-') || token.startsWith('sk-')) return 'OpenAI'
+    if (token.startsWith('AIzaSy')) return 'Google'
+    return null
+  }
   const [projectNotifs, setProjectNotifs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('tbc_project_notifs') || '{}') } catch { return {} }
   })
@@ -117,6 +124,7 @@ function App() {
   const [globalTokenPreview, setGlobalTokenPreview] = useState(null)
   const [globalTokenType, setGlobalTokenType] = useState(null)
   const [globalTokenInput, setGlobalTokenInput] = useState('')
+  const [providerTokens, setProviderTokens] = useState({})
   const [tokenSaving, setTokenSaving] = useState(false)
   const [expandedNotifs, setExpandedNotifs] = useState(new Set())
   const [detailedNotifs, setDetailedNotifs] = useState(() => localStorage.getItem('tbc_detailed_notifs') === 'true')
@@ -132,7 +140,7 @@ function App() {
 
   // Fetch settings + notifications on mount
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null); setGlobalTokenType(d.tokenType || null) }).catch(() => {})
+    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null); setGlobalTokenType(d.tokenType || null); setProviderTokens(d.providers || {}) }).catch(() => {})
     fetch('/api/notifications').then(r => r.json()).then(d => setNotifList(Array.isArray(d) ? d : [])).catch(() => {})
     if (new URLSearchParams(window.location.search).has('notif')) {
       setNotifCenter(true)
@@ -1153,24 +1161,23 @@ function App() {
           </div>
         </div>
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5">
-          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">Authentication</h3>
+          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">API Keys</h3>
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Paste any API key — provider is auto-detected from the key prefix.</p>
           <div className="py-2">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Anthropic Token</span>
-                <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                  {hasGlobalToken ? `✓ ${globalTokenType === 'oauth' ? 'OAuth' : 'API Key'}: ${globalTokenPreview}` : 'No token configured — paste an OAuth token or API key'}
-                </p>
-              </div>
-            </div>
             <div className="flex items-center gap-2">
               <input
                 type="password"
-                placeholder={hasGlobalToken ? '••••••••' : 'Paste OAuth token or API key...'}
+                placeholder="Paste API key (Anthropic, OpenAI, or Google)..."
                 value={globalTokenInput}
                 onChange={e => setGlobalTokenInput(e.target.value)}
                 className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
               />
+              {globalTokenInput && detectProvider(globalTokenInput) && (
+                <span className="text-xs text-green-600 dark:text-green-400 whitespace-nowrap">✓ {detectProvider(globalTokenInput)}</span>
+              )}
+              {globalTokenInput && !detectProvider(globalTokenInput) && (
+                <span className="text-xs text-amber-500 whitespace-nowrap">? Unknown</span>
+              )}
               <button
                 onClick={async () => {
                   setTokenSaving(true)
@@ -1184,10 +1191,14 @@ function App() {
                       const d = await res.json()
                       setHasGlobalToken(d.hasGlobalToken)
                       setGlobalTokenType(d.tokenType || null)
-                      // Refresh preview
-                      fetch('/api/settings').then(r => r.json()).then(s => { setGlobalTokenPreview(s.globalTokenPreview || null); setGlobalTokenType(s.tokenType || null) }).catch(() => {})
+                      setProviderTokens(d.providers || {})
+                      fetch('/api/settings').then(r => r.json()).then(s => {
+                        setGlobalTokenPreview(s.globalTokenPreview || null)
+                        setGlobalTokenType(s.tokenType || null)
+                        setProviderTokens(s.providers || {})
+                      }).catch(() => {})
                       setGlobalTokenInput('')
-                      setToast('Global token updated')
+                      setToast(`${detectProvider(globalTokenInput) || 'API'} key saved`)
                     }
                   } catch {}
                   setTokenSaving(false)
@@ -1197,30 +1208,47 @@ function App() {
               >
                 {tokenSaving ? 'Saving...' : 'Save'}
               </button>
-              {hasGlobalToken && (
-                <button
-                  onClick={async () => {
-                    setTokenSaving(true)
-                    try {
-                      const res = await authFetch('/api/settings/token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token: '' })
-                      })
-                      if (res.ok) {
-                        setHasGlobalToken(false)
-                        setGlobalTokenType(null)
-                        setGlobalTokenPreview(null)
-                        setToast('Global token removed')
-                      }
-                    } catch {}
-                    setTokenSaving(false)
-                  }}
-                  className="px-3 py-1.5 text-sm font-medium text-red-500 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                >
-                  Remove
-                </button>
-              )}
+            </div>
+            {/* Show configured providers */}
+            <div className="mt-3 space-y-1.5">
+              {[
+                { key: 'anthropic', label: 'Anthropic', color: 'text-orange-600 dark:text-orange-400' },
+                { key: 'openai', label: 'OpenAI', color: 'text-green-600 dark:text-green-400' },
+                { key: 'google', label: 'Google', color: 'text-blue-600 dark:text-blue-400' },
+              ].map(({ key, label, color }) => {
+                const info = providerTokens[key]
+                return (
+                  <div key={key} className="flex items-center justify-between text-xs py-1">
+                    <span className={info?.hasToken ? color : 'text-neutral-400 dark:text-neutral-500'}>
+                      {info?.hasToken ? '✓' : '○'} {label} {info?.preview ? `(${info.preview})` : ''}
+                    </span>
+                    {info?.hasToken && (
+                      <button
+                        onClick={async () => {
+                          setTokenSaving(true)
+                          try {
+                            const res = await authFetch('/api/settings/token', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ token: '', provider: key })
+                            })
+                            if (res.ok) {
+                              const d = await res.json()
+                              setProviderTokens(d.providers || {})
+                              setHasGlobalToken(d.hasGlobalToken)
+                              setToast(`${label} key removed`)
+                            }
+                          } catch {}
+                          setTokenSaving(false)
+                        }}
+                        className="text-red-500 hover:text-red-700 text-xs"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1299,16 +1327,16 @@ function App() {
           <div className="py-2">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Project Token</span>
+                <span className="text-sm text-neutral-700 dark:text-neutral-300">Project API Key</span>
                 <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                  {hasProjectToken ? `✓ ${projectTokenPreview}` : hasGlobalToken ? `Using global token (${globalTokenPreview})` : 'No token — set a project token or global token'}
+                  {hasProjectToken ? `✓ ${projectTokenPreview}` : hasGlobalToken ? `Using global token (${globalTokenPreview})` : 'No token — paste an Anthropic, OpenAI, or Google API key'}
                 </p>
               </div>
             </div>
               <div className="flex items-center gap-2">
                 <input
                   type="password"
-                  placeholder={hasProjectToken ? '••••••••' : 'Paste setup token...'}
+                  placeholder={hasProjectToken ? '••••••••' : 'Paste API key (auto-detects provider)...'}
                   value={projectTokenInput}
                   onChange={e => setProjectTokenInput(e.target.value)}
                   className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
@@ -1337,6 +1365,12 @@ function App() {
                 >
                   {projectTokenSaving ? 'Saving...' : 'Save'}
                 </button>
+                {projectTokenInput && detectProvider(projectTokenInput) && (
+                  <span className="text-xs text-green-600 dark:text-green-400 whitespace-nowrap">✓ {detectProvider(projectTokenInput)}</span>
+                )}
+                {projectTokenInput && !detectProvider(projectTokenInput) && (
+                  <span className="text-xs text-amber-500 whitespace-nowrap">? Unknown</span>
+                )}
                 {hasProjectToken && (
                   <button
                     onClick={async () => {

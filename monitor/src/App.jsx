@@ -2038,7 +2038,7 @@ function App() {
           {/* Project tabs - hidden on mobile */}
           {projects.length > 1 && (
             <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto pb-1">
-              {projects.map(project => (
+              {projects.filter(p => !p.archived || p.id === selectedProject?.id).map(project => (
                 <button
                   key={project.id}
                   onClick={() => selectProject(project)}

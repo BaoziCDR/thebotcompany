@@ -431,6 +431,21 @@ export async function runAgentWithAPI(opts) {
         return makeResult(false, lastResultText || 'Agent timed out', { timedOut: true });
       }
 
+      // Trim conversation history if approaching context limit
+      // Keep first user message + most recent exchanges
+      const TOKEN_LIMIT = 160000; // leave headroom below 200K
+      if (totalUsage.inputTokens > TOKEN_LIMIT && messages.length > 5) {
+        const keep = Math.max(3, Math.floor(messages.length * 0.4));
+        const trimmed = messages.splice(1, messages.length - 1 - keep);
+        const droppedTurns = trimmed.length;
+        log(`Trimmed ${droppedTurns} messages from history (input tokens: ${totalUsage.inputTokens})`);
+        // Insert a note so the agent knows context was trimmed
+        messages.splice(1, 0, {
+          role: 'user',
+          content: [{ type: 'text', text: `[System: ${droppedTurns} earlier messages were trimmed to stay within context limits. Continue your work based on what you can see.]` }],
+        });
+      }
+
       // Provider-specific cache hints
       provider.applyCacheHints(messages);
 

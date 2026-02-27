@@ -113,6 +113,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [hasGlobalToken, setHasGlobalToken] = useState(false)
   const [globalTokenPreview, setGlobalTokenPreview] = useState(null)
+  const [globalTokenType, setGlobalTokenType] = useState(null)
   const [globalTokenInput, setGlobalTokenInput] = useState('')
   const [tokenSaving, setTokenSaving] = useState(false)
   const [expandedNotifs, setExpandedNotifs] = useState(new Set())
@@ -129,7 +130,7 @@ function App() {
 
   // Fetch settings + notifications on mount
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null) }).catch(() => {})
+    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null); setGlobalTokenType(d.tokenType || null) }).catch(() => {})
     fetch('/api/notifications').then(r => r.json()).then(d => setNotifList(Array.isArray(d) ? d : [])).catch(() => {})
     if (new URLSearchParams(window.location.search).has('notif')) {
       setNotifCenter(true)
@@ -1154,16 +1155,16 @@ function App() {
           <div className="py-2">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Claude Setup Token</span>
+                <span className="text-sm text-neutral-700 dark:text-neutral-300">Anthropic Token</span>
                 <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                  {hasGlobalToken ? `✓ Token: ${globalTokenPreview}` : 'No global token — agents use OAuth login'}
+                  {hasGlobalToken ? `✓ ${globalTokenType === 'oauth' ? 'OAuth' : 'API Key'}: ${globalTokenPreview}` : 'No token configured — paste an OAuth token or API key'}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <input
                 type="password"
-                placeholder={hasGlobalToken ? '••••••••' : 'Paste setup token...'}
+                placeholder={hasGlobalToken ? '••••••••' : 'Paste OAuth token or API key...'}
                 value={globalTokenInput}
                 onChange={e => setGlobalTokenInput(e.target.value)}
                 className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
@@ -1180,8 +1181,9 @@ function App() {
                     if (res.ok) {
                       const d = await res.json()
                       setHasGlobalToken(d.hasGlobalToken)
+                      setGlobalTokenType(d.tokenType || null)
                       // Refresh preview
-                      fetch('/api/settings').then(r => r.json()).then(s => setGlobalTokenPreview(s.globalTokenPreview || null)).catch(() => {})
+                      fetch('/api/settings').then(r => r.json()).then(s => { setGlobalTokenPreview(s.globalTokenPreview || null); setGlobalTokenType(s.tokenType || null) }).catch(() => {})
                       setGlobalTokenInput('')
                       setToast('Global token updated')
                     }
@@ -1205,6 +1207,8 @@ function App() {
                       })
                       if (res.ok) {
                         setHasGlobalToken(false)
+                        setGlobalTokenType(null)
+                        setGlobalTokenPreview(null)
                         setToast('Global token removed')
                       }
                     } catch {}
@@ -1242,7 +1246,6 @@ function App() {
   const projNotifSettings = getProjSetting('notifs')
   const projTokenSettings = getProjSetting('token')
   const notifUseGlobal = projNotifSettings.useGlobal !== false
-  const tokenUseGlobal = projTokenSettings.useGlobal !== false
 
   const projectSettingsModal = selectedProject && (
     <Modal open={projectSettingsOpen} onClose={() => setProjectSettingsOpen(false)}>
@@ -1291,30 +1294,15 @@ function App() {
         {/* Authentication section */}
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5">
           <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">Authentication</h3>
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <span className="text-sm text-neutral-700 dark:text-neutral-300">Use Global Setting</span>
-              {tokenUseGlobal && <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                {hasGlobalToken ? `Global: ${globalTokenPreview}` : 'No global token set'}
-              </p>}
-            </div>
-            <button
-              onClick={() => setProjSetting('token', { useGlobal: !tokenUseGlobal })}
-              className={`relative w-11 h-6 rounded-full transition-colors ${tokenUseGlobal ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${tokenUseGlobal ? 'translate-x-5' : ''}`} />
-            </button>
-          </div>
-          <div className={tokenUseGlobal ? 'opacity-40 pointer-events-none' : ''}>
-            <div className="py-2">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">Setup Token</span>
-                  <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                    {hasProjectToken ? `✓ ${projectTokenPreview}` : 'No project token set'}
-                  </p>
-                </div>
+          <div className="py-2">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-sm text-neutral-700 dark:text-neutral-300">Project Token</span>
+                <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+                  {hasProjectToken ? `✓ ${projectTokenPreview}` : hasGlobalToken ? `Using global token (${globalTokenPreview})` : 'No token — set a project token or global token'}
+                </p>
               </div>
+            </div>
               <div className="flex items-center gap-2">
                 <input
                   type="password"
@@ -1371,7 +1359,6 @@ function App() {
                   </button>
                 )}
               </div>
-            </div>
           </div>
         </div>
       </ModalContent>

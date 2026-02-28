@@ -198,7 +198,7 @@ function getToolDefinitions() {
 // ---------------------------------------------------------------------------
 // Tool Execution
 // ---------------------------------------------------------------------------
-function executeBash(input, cwd, remainingMs = 0) {
+function executeBash(input, cwd, remainingMs = 0, bashEnv = null) {
   let timeout = Math.min(input.timeout || 120000, 600000);
   if (remainingMs > 0) {
     timeout = Math.min(timeout, remainingMs);
@@ -212,6 +212,7 @@ function executeBash(input, cwd, remainingMs = 0) {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout,
+      ...(bashEnv ? { env: bashEnv } : {}),
     });
 
     let stdout = '';
@@ -332,9 +333,9 @@ function executeGrep(input, cwd) {
   }
 }
 
-async function executeTool(toolName, toolInput, cwd, remainingMs = 0) {
+async function executeTool(toolName, toolInput, cwd, remainingMs = 0, bashEnv = null) {
   switch (toolName) {
-    case 'Bash':  return await executeBash(toolInput, cwd, remainingMs);
+    case 'Bash':  return await executeBash(toolInput, cwd, remainingMs, bashEnv);
     case 'Read':  return executeRead(toolInput, cwd);
     case 'Write': return executeWrite(toolInput, cwd);
     case 'Edit':  return executeEdit(toolInput, cwd);
@@ -564,7 +565,7 @@ export async function runAgentWithAPI(opts) {
           log(`Tool: ${tc.name}${tc.name === 'Bash' ? ` → ${(tc.input.command || '').slice(0, 100)}` : ''}`);
 
           const remainingMs = timeoutMs > 0 ? Math.max(0, timeoutMs - (Date.now() - startTime)) : 0;
-          const result = await executeTool(tc.name, tc.input, cwd, remainingMs);
+          const result = await executeTool(tc.name, tc.input, cwd, remainingMs, bashEnv);
           toolResults.push({ toolCallId: tc.id, content: result });
         }
 

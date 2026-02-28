@@ -2584,21 +2584,21 @@ function App() {
                 )}
               </div>
               ) : (
-              <div>
+              <div className="space-y-3">
                 {agentModal.data.workspaceFiles?.length > 0 ? (
-                  <div className="space-y-2">
-                    {agentModal.data.workspaceFiles.map((file) => (
-                      <div key={file.name} className="border-b border-neutral-200 dark:border-neutral-700 pb-3 last:border-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-sm">{file.name}</span>
-                          <span className="text-xs text-neutral-400">{new Date(file.modified).toLocaleString()}</span>
+                  agentModal.data.workspaceFiles.map((file, i) => (
+                    <details key={file.name} open={i === 0}>
+                      <summary className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase cursor-pointer select-none py-1 hover:text-neutral-700 dark:hover:text-neutral-300 flex items-center justify-between">
+                        <span>{file.name}</span>
+                        <span className="text-[10px] font-normal normal-case">{new Date(file.modified).toLocaleString()}</span>
+                      </summary>
+                      {file.content && (
+                        <div className="text-sm prose prose-sm dark:prose-invert max-w-none mt-1 border-t border-neutral-200 dark:border-neutral-700 pt-3">
+                          <pre className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap">{file.content}</pre>
                         </div>
-                        {file.content && (
-                          <pre className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-48 overflow-y-auto">{file.content}</pre>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </details>
+                  ))
                 ) : (
                   <p className="text-neutral-400 dark:text-neutral-500 italic py-4 text-center">No workspace files</p>
                 )}

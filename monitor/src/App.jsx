@@ -77,6 +77,13 @@ function App() {
   const [projectTokenSaving, setProjectTokenSaving] = useState(false)
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const detectProvider = (token) => {
+    if (!token) return null
+    if (token.startsWith('sk-ant-')) return 'Anthropic'
+    if (token.startsWith('sk-proj-') || token.startsWith('sk-')) return 'OpenAI'
+    if (token.startsWith('AIzaSy')) return 'Google'
+    return null
+  }
   const [projectNotifs, setProjectNotifs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('tbc_project_notifs') || '{}') } catch { return {} }
   })
@@ -117,6 +124,7 @@ function App() {
   const [globalTokenPreview, setGlobalTokenPreview] = useState(null)
   const [globalTokenType, setGlobalTokenType] = useState(null)
   const [globalTokenInput, setGlobalTokenInput] = useState('')
+  const [providerTokens, setProviderTokens] = useState({})
   const [tokenSaving, setTokenSaving] = useState(false)
   const [expandedNotifs, setExpandedNotifs] = useState(new Set())
   const [detailedNotifs, setDetailedNotifs] = useState(() => localStorage.getItem('tbc_detailed_notifs') === 'true')
@@ -132,7 +140,7 @@ function App() {
 
   // Fetch settings + notifications on mount
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null); setGlobalTokenType(d.tokenType || null) }).catch(() => {})
+    fetch('/api/settings').then(r => r.json()).then(d => { setHasGlobalToken(!!d.hasGlobalToken); setGlobalTokenPreview(d.globalTokenPreview || null); setGlobalTokenType(d.tokenType || null); setProviderTokens(d.providers || {}) }).catch(() => {})
     fetch('/api/notifications').then(r => r.json()).then(d => setNotifList(Array.isArray(d) ? d : [])).catch(() => {})
     if (new URLSearchParams(window.location.search).has('notif')) {
       setNotifCenter(true)
@@ -1153,24 +1161,23 @@ function App() {
           </div>
         </div>
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5">
-          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">Authentication</h3>
+          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">API Keys</h3>
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Paste any API key — provider is auto-detected from the key prefix.</p>
           <div className="py-2">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Anthropic Token</span>
-                <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                  {hasGlobalToken ? `✓ ${globalTokenType === 'oauth' ? 'OAuth' : 'API Key'}: ${globalTokenPreview}` : 'No token configured — paste an OAuth token or API key'}
-                </p>
-              </div>
-            </div>
             <div className="flex items-center gap-2">
               <input
                 type="password"
-                placeholder={hasGlobalToken ? '••••••••' : 'Paste OAuth token or API key...'}
+                placeholder="Paste API key (Anthropic, OpenAI, or Google)..."
                 value={globalTokenInput}
                 onChange={e => setGlobalTokenInput(e.target.value)}
                 className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
               />
+              {globalTokenInput && detectProvider(globalTokenInput) && (
+                <span className="text-xs text-green-600 dark:text-green-400 whitespace-nowrap">✓ {detectProvider(globalTokenInput)}</span>
+              )}
+              {globalTokenInput && !detectProvider(globalTokenInput) && (
+                <span className="text-xs text-amber-500 whitespace-nowrap">? Unknown</span>
+              )}
               <button
                 onClick={async () => {
                   setTokenSaving(true)
@@ -1184,10 +1191,14 @@ function App() {
                       const d = await res.json()
                       setHasGlobalToken(d.hasGlobalToken)
                       setGlobalTokenType(d.tokenType || null)
-                      // Refresh preview
-                      fetch('/api/settings').then(r => r.json()).then(s => { setGlobalTokenPreview(s.globalTokenPreview || null); setGlobalTokenType(s.tokenType || null) }).catch(() => {})
+                      setProviderTokens(d.providers || {})
+                      fetch('/api/settings').then(r => r.json()).then(s => {
+                        setGlobalTokenPreview(s.globalTokenPreview || null)
+                        setGlobalTokenType(s.tokenType || null)
+                        setProviderTokens(s.providers || {})
+                      }).catch(() => {})
                       setGlobalTokenInput('')
-                      setToast('Global token updated')
+                      setToast(`${detectProvider(globalTokenInput) || 'API'} key saved`)
                     }
                   } catch {}
                   setTokenSaving(false)
@@ -1197,30 +1208,47 @@ function App() {
               >
                 {tokenSaving ? 'Saving...' : 'Save'}
               </button>
-              {hasGlobalToken && (
-                <button
-                  onClick={async () => {
-                    setTokenSaving(true)
-                    try {
-                      const res = await authFetch('/api/settings/token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token: '' })
-                      })
-                      if (res.ok) {
-                        setHasGlobalToken(false)
-                        setGlobalTokenType(null)
-                        setGlobalTokenPreview(null)
-                        setToast('Global token removed')
-                      }
-                    } catch {}
-                    setTokenSaving(false)
-                  }}
-                  className="px-3 py-1.5 text-sm font-medium text-red-500 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                >
-                  Remove
-                </button>
-              )}
+            </div>
+            {/* Show configured providers */}
+            <div className="mt-3 space-y-1.5">
+              {[
+                { key: 'anthropic', label: 'Anthropic', color: 'text-orange-600 dark:text-orange-400' },
+                { key: 'openai', label: 'OpenAI', color: 'text-green-600 dark:text-green-400' },
+                { key: 'google', label: 'Google', color: 'text-blue-600 dark:text-blue-400' },
+              ].map(({ key, label, color }) => {
+                const info = providerTokens[key]
+                return (
+                  <div key={key} className="flex items-center justify-between text-xs py-1">
+                    <span className={info?.hasToken ? color : 'text-neutral-400 dark:text-neutral-500'}>
+                      {info?.hasToken ? '✓' : '○'} {label} {info?.preview ? `(${info.preview})` : ''}
+                    </span>
+                    {info?.hasToken && (
+                      <button
+                        onClick={async () => {
+                          setTokenSaving(true)
+                          try {
+                            const res = await authFetch('/api/settings/token', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ token: '', provider: key })
+                            })
+                            if (res.ok) {
+                              const d = await res.json()
+                              setProviderTokens(d.providers || {})
+                              setHasGlobalToken(d.hasGlobalToken)
+                              setToast(`${label} key removed`)
+                            }
+                          } catch {}
+                          setTokenSaving(false)
+                        }}
+                        className="text-red-500 hover:text-red-700 text-xs"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1296,23 +1324,16 @@ function App() {
         {/* Authentication section */}
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5">
           <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">Authentication</h3>
-          <div className="py-2">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Project Token</span>
-                <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                  {hasProjectToken ? `✓ ${projectTokenPreview}` : hasGlobalToken ? `Using global token (${globalTokenPreview})` : 'No token — set a project token or global token'}
-                </p>
-              </div>
-            </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  placeholder={hasProjectToken ? '••••••••' : 'Paste setup token...'}
-                  value={projectTokenInput}
-                  onChange={e => setProjectTokenInput(e.target.value)}
-                  className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
-                />
+          <div className="py-2 space-y-3">
+            {/* Current key status */}
+            {hasProjectToken ? (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                    {detectProvider(projectTokenPreview) || 'API Key'}
+                  </span>
+                  <code className="text-xs text-neutral-500 dark:text-neutral-400">{projectTokenPreview}</code>
+                </div>
                 <button
                   onClick={async () => {
                     setProjectTokenSaving(true)
@@ -1320,24 +1341,40 @@ function App() {
                       const res = await authFetch(projectApi('/token'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token: projectTokenInput })
+                        body: JSON.stringify({ token: '' })
                       })
                       if (res.ok) {
-                        const d = await res.json()
-                        setHasProjectToken(d.hasProjectToken)
-                        setProjectTokenPreview(d.hasProjectToken ? projectTokenInput.slice(0, 4) + '****' + projectTokenInput.slice(-4) : null)
-                        setProjectTokenInput('')
-                        setToast('Project token updated')
+                        setHasProjectToken(false)
+                        setProjectTokenPreview(null)
+                        setToast('Project token removed')
                       }
                     } catch {}
                     setProjectTokenSaving(false)
                   }}
-                  disabled={projectTokenSaving || !projectTokenInput}
-                  className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                  className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
                 >
-                  {projectTokenSaving ? 'Saving...' : 'Save'}
+                  Remove
                 </button>
-                {hasProjectToken && (
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                {hasGlobalToken ? `Using global token (${globalTokenPreview})` : 'No token configured'}
+              </p>
+            )}
+            {/* Input for new key */}
+            <div className="space-y-2">
+              <input
+                type="password"
+                placeholder={hasProjectToken ? 'Replace with new key...' : 'Paste API key (auto-detects provider)...'}
+                value={projectTokenInput}
+                onChange={e => setProjectTokenInput(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200"
+              />
+              {projectTokenInput && (
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${detectProvider(projectTokenInput) ? 'text-green-600 dark:text-green-400' : 'text-amber-500'}`}>
+                    {detectProvider(projectTokenInput) ? `✓ Detected: ${detectProvider(projectTokenInput)}` : '? Unknown provider'}
+                  </span>
                   <button
                     onClick={async () => {
                       setProjectTokenSaving(true)
@@ -1345,22 +1382,26 @@ function App() {
                         const res = await authFetch(projectApi('/token'), {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ token: '' })
+                          body: JSON.stringify({ token: projectTokenInput })
                         })
                         if (res.ok) {
-                          setHasProjectToken(false)
-                          setProjectTokenPreview(null)
-                          setToast('Project token removed')
+                          const d = await res.json()
+                          setHasProjectToken(d.hasProjectToken)
+                          setProjectTokenPreview(d.hasProjectToken ? projectTokenInput.slice(0, 4) + '****' + projectTokenInput.slice(-4) : null)
+                          setProjectTokenInput('')
+                          setToast(`${detectProvider(projectTokenInput) || 'API'} key saved`)
                         }
                       } catch {}
                       setProjectTokenSaving(false)
                     }}
-                    className="px-3 py-1.5 text-sm font-medium text-red-500 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                    disabled={projectTokenSaving}
+                    className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
                   >
-                    Remove
+                    {projectTokenSaving ? 'Saving...' : 'Save'}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -2004,7 +2045,7 @@ function App() {
           {/* Project tabs - hidden on mobile */}
           {projects.length > 1 && (
             <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto pb-1">
-              {projects.map(project => (
+              {projects.filter(p => !p.archived || p.id === selectedProject?.id).map(project => (
                 <button
                   key={project.id}
                   onClick={() => selectProject(project)}
@@ -2390,7 +2431,7 @@ function App() {
                             <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-100 capitalize">{comment.agent || comment.author}</span>
                             <span className="text-xs text-neutral-400 dark:text-neutral-500">{new Date(comment.created_at).toLocaleString()}</span>
                           </div>
-                          <div className="text-sm text-neutral-700 dark:text-neutral-300 prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                          <div className="text-sm text-neutral-700 dark:text-neutral-300 prose prose-sm prose-neutral dark:prose-invert max-w-none break-words [&_code]:break-all">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripAllMetaBlocks(comment.body)}</ReactMarkdown>
                             {parseScheduleBlock(comment.body) && (
                               <ScheduleDiagram schedule={parseScheduleBlock(comment.body)} />
@@ -2519,7 +2560,7 @@ function App() {
                 {/* Agent Skill - shown first and open by default */}
                 <details open>
                   <summary className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase cursor-pointer select-none py-1 hover:text-neutral-700 dark:hover:text-neutral-300">Agent Skill — {agentModal.agent}.md</summary>
-                  <div className="bg-neutral-50 dark:bg-neutral-900 rounded p-4 text-sm prose prose-sm dark:prose-invert max-w-none  mt-1">
+                  <div className="text-sm prose prose-sm dark:prose-invert max-w-none mt-1 border-t border-neutral-200 dark:border-neutral-700 pt-3">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{agentModal.data.skill}</ReactMarkdown>
                   </div>
                 </details>
@@ -2527,7 +2568,7 @@ function App() {
                 {agentModal.data.roleRules && (
                 <details>
                   <summary className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase cursor-pointer select-none py-1 hover:text-neutral-700 dark:hover:text-neutral-300">{agentModal.data.isManager ? 'Manager' : 'Worker'} Rules — {agentModal.data.isManager ? 'manager' : 'worker'}.md</summary>
-                  <div className="bg-neutral-50 dark:bg-neutral-900 rounded p-4 text-sm prose prose-sm dark:prose-invert max-w-none  mt-1">
+                  <div className="text-sm prose prose-sm dark:prose-invert max-w-none mt-1 border-t border-neutral-200 dark:border-neutral-700 pt-3">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{agentModal.data.roleRules}</ReactMarkdown>
                   </div>
                 </details>
@@ -2536,28 +2577,28 @@ function App() {
                 {agentModal.data.everyone && (
                 <details>
                   <summary className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase cursor-pointer select-none py-1 hover:text-neutral-700 dark:hover:text-neutral-300">Shared Rules — everyone.md</summary>
-                  <div className="bg-neutral-50 dark:bg-neutral-900 rounded p-4 text-sm prose prose-sm dark:prose-invert max-w-none  mt-1">
+                  <div className="text-sm prose prose-sm dark:prose-invert max-w-none mt-1 border-t border-neutral-200 dark:border-neutral-700 pt-3">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{agentModal.data.everyone}</ReactMarkdown>
                   </div>
                 </details>
                 )}
               </div>
               ) : (
-              <div>
+              <div className="space-y-3">
                 {agentModal.data.workspaceFiles?.length > 0 ? (
-                  <div className="space-y-2">
-                    {agentModal.data.workspaceFiles.map((file) => (
-                      <div key={file.name} className="bg-neutral-50 dark:bg-neutral-900 rounded p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-sm">{file.name}</span>
-                          <span className="text-xs text-neutral-400">{new Date(file.modified).toLocaleString()}</span>
+                  agentModal.data.workspaceFiles.map((file, i) => (
+                    <details key={file.name} open={i === 0}>
+                      <summary className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase cursor-pointer select-none py-1 hover:text-neutral-700 dark:hover:text-neutral-300 flex items-center justify-between">
+                        <span>{file.name}</span>
+                        <span className="text-[10px] font-normal normal-case">{new Date(file.modified).toLocaleString()}</span>
+                      </summary>
+                      {file.content && (
+                        <div className="text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none mt-1 border-t border-neutral-200 dark:border-neutral-700 pt-3 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:border-0">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{file.content}</ReactMarkdown>
                         </div>
-                        {file.content && (
-                          <pre className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-48 overflow-y-auto">{file.content}</pre>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </details>
+                  ))
                 ) : (
                   <p className="text-neutral-400 dark:text-neutral-500 italic py-4 text-center">No workspace files</p>
                 )}
@@ -2586,9 +2627,9 @@ function App() {
                 onChange={(e) => setAgentSettingsModal(prev => ({ ...prev, model: e.target.value }))}
               >
                 <option value="">Inherited from global</option>
-                {availableModels.map(m => (
-                  <option key={m.id} value={m.id}>{m.display_name}</option>
-                ))}
+                <option value="high">⚡ High (deep reasoning)</option>
+                <option value="mid">● Mid (default)</option>
+                <option value="low">○ Low (fast/cheap)</option>
               </select>
               <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Leave empty to use the project's default model.</p>
             </div>
@@ -2895,7 +2936,7 @@ function App() {
               {issueModal.issue.body && (
                 <>
                   <Separator />
-                  <div className="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-4 prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{issueModal.issue.body}</ReactMarkdown>
                   </div>
                 </>
@@ -2911,7 +2952,7 @@ function App() {
                   </h3>
                   <div className="space-y-3">
                     {issueModal.comments.map((comment) => (
-                      <div key={comment.id} className="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 border border-neutral-100 dark:border-neutral-800">
+                      <div key={comment.id} className="border-b border-neutral-200 dark:border-neutral-700 pb-3 last:border-0">
                         <div className="flex items-center gap-2 mb-2">
                           <Avatar className="w-6 h-6">
                             <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white text-xs">

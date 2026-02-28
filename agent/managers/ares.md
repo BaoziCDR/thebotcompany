@@ -1,5 +1,5 @@
 ---
-model: claude-opus-4-6
+model: mid
 role: Execution Manager
 ---
 # Ares

@@ -366,6 +366,7 @@ export async function runAgentWithAPI(opts) {
     prompt,
     model: rawModel = 'claude-opus-4-6',
     token,
+    reasoningEffort,
     cwd,
     timeoutMs = 0,
     env = {},
@@ -494,7 +495,7 @@ export async function runAgentWithAPI(opts) {
 
       // Build request
       const params = provider.buildRequest({
-        model, systemPrompt: prompt, messages, tools, isOAuth,
+        model, systemPrompt: prompt, messages, tools, isOAuth, reasoningEffort,
       });
 
       // Call API

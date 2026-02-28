@@ -9,7 +9,7 @@ const MODEL_PRICING = {
   'gpt-4.1':        { input: 2,   output: 8   },
   'o3':             { input: 2,   output: 8   },
   'o4-mini':        { input: 1.1, output: 4.4 },
-  'gpt-5.3-codex':  { input: 2,   output: 8   },
+  'gpt-5.3-codex':  { input: 1.75, output: 14  },
 };
 
 function getPricing(model) {
@@ -37,7 +37,7 @@ export class OpenAIProvider extends BaseProvider {
     }));
   }
 
-  buildRequest({ model, systemPrompt, messages, tools }) {
+  buildRequest({ model, systemPrompt, messages, tools, reasoningEffort }) {
     // Strip openai/ prefix
     const modelName = model.replace(/^openai\//, '');
 
@@ -83,12 +83,16 @@ export class OpenAIProvider extends BaseProvider {
       }
     }
 
-    return {
+    const params = {
       model: modelName,
       messages: openaiMessages,
       tools,
       max_completion_tokens: 16384,
     };
+    if (reasoningEffort) {
+      params.reasoning_effort = reasoningEffort;
+    }
+    return params;
   }
 
   async callAPI(client, params, signal) {

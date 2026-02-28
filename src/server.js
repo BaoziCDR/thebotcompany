@@ -39,6 +39,36 @@ function detectTokenProvider(token) {
   return 'unknown';
 }
 
+// Model tier system — maps abstract tiers to provider-specific models
+const MODEL_TIERS = {
+  anthropic: {
+    high:  { model: 'claude-opus-4-6' },
+    mid:   { model: 'claude-sonnet-4-5' },
+    low:   { model: 'claude-haiku-3-5' },
+  },
+  openai: {
+    high:  { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh' },
+    mid:   { model: 'gpt-5.3-codex', reasoningEffort: 'high' },
+    low:   { model: 'gpt-5.3-codex', reasoningEffort: 'medium' },
+  },
+};
+
+function resolveModelTier(tierOrModel, provider) {
+  const tier = (tierOrModel || '').toLowerCase().trim();
+  const tiers = MODEL_TIERS[provider];
+  if (tiers && tiers[tier]) {
+    return tiers[tier];
+  }
+  // Not a tier — treat as explicit model name
+  return { model: tierOrModel };
+}
+
+function detectProviderFromToken(token) {
+  if (!token) return 'anthropic';
+  const p = detectTokenProvider(token);
+  return (p === 'unknown' || !p) ? 'anthropic' : p;
+}
+
 // Strip meta directive blocks from agent responses (keep human-readable text only)
 function stripMetaBlocks(text) {
   if (!text) return text;
@@ -274,7 +304,7 @@ class ProjectRunner {
   }
 
   loadConfig() {
-    const defaults = { cycleIntervalMs: 0, agentTimeoutMs: 3600000, model: 'claude-opus-4-6', budgetPer24h: 0 };
+    const defaults = { cycleIntervalMs: 0, agentTimeoutMs: 3600000, model: 'mid', budgetPer24h: 0 };
     try {
       const raw = fs.readFileSync(this.configPath, 'utf-8');
       const config = yaml.load(raw) || {};
@@ -1584,10 +1614,19 @@ class ProjectRunner {
       return { success: false, resultText: '' };
     }
 
-    const agentModel = agent.rawModel || config.model || 'claude-opus-4-6';
+    const agentTierOrModel = agent.rawModel || config.model || 'mid';
 
     // Resolve token: project-specific > global tokens by provider
     const projectToken = config.setupToken;
+    const provider = projectToken
+      ? detectProviderFromToken(projectToken)
+      : detectProviderFromToken(process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+
+    // Resolve tier to concrete model + optional reasoning effort
+    const resolved = resolveModelTier(agentTierOrModel, provider);
+    const agentModel = resolved.model;
+    const reasoningEffort = resolved.reasoningEffort || null;
+
     const isOpenAIModel = agentModel.startsWith('openai/') || agentModel.startsWith('gpt-') || agentModel.startsWith('o3') || agentModel.startsWith('o4-');
     const isGoogleModel = agentModel.startsWith('google/') || agentModel.startsWith('gemini-');
 
@@ -1613,12 +1652,14 @@ class ProjectRunner {
       TBC_FOCUSED_ISSUES: visibility?.issues?.join(',') || '',
     };
 
-    log(`Using API runner for ${agent.name} (model: ${agentModel})`, this.id);
+    const tierLabel = resolved.reasoningEffort ? `${agentModel} (${resolved.reasoningEffort})` : agentModel;
+    log(`Using API runner for ${agent.name} (model: ${tierLabel})`, this.id);
 
     const result = await runAgentWithAPI({
       prompt: skillContent,
       model: agentModel,
       token: resolvedToken,
+      reasoningEffort,
       cwd: this.path,
       timeoutMs: config.agentTimeoutMs || 0,
       env: agentEnv,
@@ -2374,7 +2415,8 @@ const server = http.createServer(async (req, res) => {
       const safeConfig = { ...config };
       delete safeConfig.setupToken;
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ config: safeConfig, raw, hasProjectToken, projectTokenPreview: projectToken ? maskToken(projectToken) : null }));
+      const detectedProvider = projectToken ? detectProviderFromToken(projectToken) : detectProviderFromToken(process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+      res.end(JSON.stringify({ config: safeConfig, raw, hasProjectToken, projectTokenPreview: projectToken ? maskToken(projectToken) : null, provider: detectedProvider, tiers: MODEL_TIERS[detectedProvider] || {} }));
       return;
     }
 

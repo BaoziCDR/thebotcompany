@@ -2630,10 +2630,6 @@ function App() {
                 <option value="high">⚡ High (deep reasoning)</option>
                 <option value="mid">● Mid (default)</option>
                 <option value="low">○ Low (fast/cheap)</option>
-                {availableModels.length > 0 && <option disabled>──── Specific models ────</option>}
-                {availableModels.map(m => (
-                  <option key={m.id} value={m.id}>{m.display_name}</option>
-                ))}
               </select>
               <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Leave empty to use the project's default model.</p>
             </div>

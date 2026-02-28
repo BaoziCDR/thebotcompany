@@ -120,7 +120,8 @@ export class OpenAIProvider extends BaseProvider {
       usage: {
         inputTokens: response.usage?.prompt_tokens || 0,
         outputTokens: response.usage?.completion_tokens || 0,
-        cacheReadTokens: 0,
+        cacheReadTokens: response.usage?.prompt_tokens_details?.cached_tokens || 0,
+        reasoningTokens: response.usage?.completion_tokens_details?.reasoning_tokens || 0,
       },
       raw: message,
     };
@@ -150,8 +151,11 @@ export class OpenAIProvider extends BaseProvider {
 
   calculateCost(usage, model) {
     const pricing = getPricing(model);
+    const cachedTokens = usage.cacheReadTokens || 0;
+    const uncachedInput = usage.inputTokens - cachedTokens;
     return (
-      (usage.inputTokens * pricing.input) +
+      (uncachedInput * pricing.input) +
+      (cachedTokens * pricing.input * 0.5) +
       (usage.outputTokens * pricing.output)
     ) / 1_000_000;
   }

@@ -2936,7 +2936,7 @@ function App() {
               {issueModal.issue.body && (
                 <>
                   <Separator />
-                  <div className="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-4 prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{issueModal.issue.body}</ReactMarkdown>
                   </div>
                 </>
@@ -2952,7 +2952,7 @@ function App() {
                   </h3>
                   <div className="space-y-3">
                     {issueModal.comments.map((comment) => (
-                      <div key={comment.id} className="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 border border-neutral-100 dark:border-neutral-800">
+                      <div key={comment.id} className="border-b border-neutral-200 dark:border-neutral-700 pb-3 last:border-0">
                         <div className="flex items-center gap-2 mb-2">
                           <Avatar className="w-6 h-6">
                             <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white text-xs">

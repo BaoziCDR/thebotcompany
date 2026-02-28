@@ -515,17 +515,35 @@ export async function runAgentWithAPI(opts) {
         model, systemPrompt: prompt, messages, tools, isOAuth, reasoningEffort,
       });
 
-      // Call API
+      // Call API with retry for transient errors (429, 503)
       let response;
-      try {
-        response = await provider.callAPI(client, params, abortController.signal);
-      } catch (err) {
-        if (aborted || err.name === 'AbortError' || abortController.signal.aborted) {
-          log(`Agent timeout during API call (aborted)`);
-          return makeResult(false, lastResultText || 'Agent timed out', { timedOut: true });
+      const MAX_RETRIES = 3;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          response = await provider.callAPI(client, params, abortController.signal);
+          break; // success
+        } catch (err) {
+          if (aborted || err.name === 'AbortError' || abortController.signal.aborted) {
+            log(`Agent timeout during API call (aborted)`);
+            return makeResult(false, lastResultText || 'Agent timed out', { timedOut: true });
+          }
+          const status = err.status || err.code || 0;
+          const isRetryable = status === 429 || status === 503 || /rate.limit|overloaded|unavailable|quota/i.test(err.message);
+          if (isRetryable && attempt < MAX_RETRIES) {
+            // Parse retry-after from error message or use exponential backoff
+            const retryMatch = err.message.match(/retry in ([\d.]+)s/i);
+            const hintDelay = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 0;
+            const delaySec = Math.max(60, hintDelay); // at least 60s between retries
+            log(`API ${status} error, retrying in ${delaySec}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+            await new Promise(r => setTimeout(r, delaySec * 1000));
+            if (aborted) {
+              return makeResult(false, lastResultText || 'Agent timed out', { timedOut: true });
+            }
+            continue;
+          }
+          log(`API error: ${err.message}`);
+          return makeResult(false, `API error: ${err.message}`);
         }
-        log(`API error: ${err.message}`);
-        return makeResult(false, `API error: ${err.message}`);
       }
 
       if (aborted) {

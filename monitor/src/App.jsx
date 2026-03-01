@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1769,11 +1769,11 @@ function App() {
                 <div className="flex rounded-md overflow-hidden border border-neutral-300 dark:border-neutral-600">
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${addProjectModal.repoMode === 'existing' ? 'bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900' : 'bg-white text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'}`}
-                    onClick={() => setAddProjectModal(prev => ({ ...prev, repoMode: 'existing' }))}
+                    onMouseDown={(e) => { e.preventDefault(); setAddProjectModal(prev => ({ ...prev, repoMode: 'existing', selectedRepo: '' })); }}
                   >Import Existing</button>
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${addProjectModal.repoMode === 'new' ? 'bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900' : 'bg-white text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'}`}
-                    onClick={() => setAddProjectModal(prev => ({ ...prev, repoMode: 'new' }))}
+                    onMouseDown={(e) => { e.preventDefault(); setAddProjectModal(prev => ({ ...prev, repoMode: 'new', selectedRepo: '' })); }}
                   >Create New</button>
                 </div>
 
@@ -3356,4 +3356,28 @@ function App() {
   )
 }
 
-export default App
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error('App crashed:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
+          <div className="text-center p-8 max-w-md">
+            <h1 className="text-lg font-bold text-neutral-800 dark:text-neutral-200 mb-2">Something went wrong</h1>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">{this.state.error?.message || 'An unexpected error occurred'}</p>
+            <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Reload</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AppWithErrorBoundary() {
+  return <AppErrorBoundary><App /></AppErrorBoundary>;
+}
+
+export default AppWithErrorBoundary

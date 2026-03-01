@@ -1498,24 +1498,22 @@ function App() {
           return (
           <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5 mt-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Model Tiers</h3>
+              <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Manual Model Selection</h3>
               <button
                 type="button"
                 role="switch"
                 aria-checked={hasOverrides}
-                onClick={async () => {
+                onClick={() => {
                   if (hasOverrides) {
-                    // Disable: clear all overrides
-                    await saveModels({});
-                    setToast('Model overrides disabled');
+                    setSelectedProject(prev => prev ? { ...prev, config: { ...prev.config, models: {} } } : prev);
+                    saveModels({}).then(() => setToast('Model overrides disabled'));
                   } else {
-                    // Enable: set defaults from current provider tiers
                     const defaults = {};
                     for (const tier of ['high', 'mid', 'low']) {
                       if (providerTiers[tier]) defaults[tier] = providerTiers[tier].model;
                     }
-                    await saveModels(defaults);
-                    setToast('Model overrides enabled');
+                    setSelectedProject(prev => prev ? { ...prev, config: { ...prev.config, models: defaults } } : prev);
+                    saveModels(defaults).then(() => setToast('Model overrides enabled'));
                   }
                 }}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${hasOverrides ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}
@@ -1530,11 +1528,12 @@ function App() {
                     <span className={`text-xs font-bold w-10 shrink-0 ${tier === 'high' ? 'text-purple-500' : tier === 'mid' ? 'text-blue-500' : 'text-neutral-400'}`}>{tier.toUpperCase()}</span>
                     <select
                       value={currentModels[tier] || ''}
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const val = e.target.value;
                         const models = { ...currentModels };
                         if (val) models[tier] = val; else delete models[tier];
-                        await saveModels(models);
+                        setSelectedProject(prev => prev ? { ...prev, config: { ...prev.config, models } } : prev);
+                        saveModels(models);
                       }}
                       className="flex-1 min-w-0 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
                     >

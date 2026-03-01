@@ -66,8 +66,12 @@ const MODEL_TIERS = {
   },
 };
 
-function resolveModelTier(tierOrModel, provider) {
+function resolveModelTier(tierOrModel, provider, projectModels) {
   const tier = (tierOrModel || '').toLowerCase().trim();
+  // Project-level model overrides take priority
+  if (projectModels && projectModels[tier]) {
+    return { model: projectModels[tier] };
+  }
   const tiers = MODEL_TIERS[provider];
   if (tiers && tiers[tier]) {
     return tiers[tier];
@@ -1694,7 +1698,7 @@ class ProjectRunner {
     }
 
     // Resolve tier to concrete model + optional reasoning effort
-    const resolved = resolveModelTier(agentTierOrModel, provider);
+    const resolved = resolveModelTier(agentTierOrModel, provider, config.models);
     const agentModel = resolved.model;
     const reasoningEffort = resolved.reasoningEffort || null;
 
@@ -2549,6 +2553,37 @@ const server = http.createServer(async (req, res) => {
           runner.saveConfig(content);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    // POST /api/projects/:id/models — update project-level model overrides
+    if (req.method === 'POST' && subPath === 'models') {
+      if (!requireWrite(req, res)) return;
+      let body = '';
+      req.on('data', c => body += c);
+      req.on('end', () => {
+        try {
+          const { models } = JSON.parse(body);
+          // Read existing config, merge models, save
+          const configRaw = fs.readFileSync(runner.configPath, 'utf-8');
+          const config = yaml.load(configRaw) || {};
+          if (models && (models.high || models.mid || models.low)) {
+            config.models = {};
+            if (models.high) config.models.high = models.high;
+            if (models.mid) config.models.mid = models.mid;
+            if (models.low) config.models.low = models.low;
+          } else {
+            delete config.models;
+          }
+          const newYaml = yaml.dump(config, { lineWidth: -1 });
+          runner.saveConfig(newYaml);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, models: config.models || null }));
         } catch (e) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: e.message }));

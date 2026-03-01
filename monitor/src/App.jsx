@@ -1472,6 +1472,45 @@ function App() {
           </div>
         </div>
 
+        {/* Model Tiers */}
+        {isWriteMode && (
+          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5 mt-5">
+            <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">Model Tiers</h3>
+            <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Override the default model for each reasoning tier. Leave empty to use the global default.</p>
+            <div className="space-y-2">
+              {['high', 'mid', 'low'].map(tier => {
+                const currentModels = selectedProject?.config?.models || {};
+                return (
+                  <div key={tier} className="flex items-center gap-2">
+                    <span className={`text-xs font-medium w-10 shrink-0 ${tier === 'high' ? 'text-purple-500' : tier === 'mid' ? 'text-blue-500' : 'text-neutral-400'}`}>{tier.toUpperCase()}</span>
+                    <input
+                      type="text"
+                      placeholder={tier === 'high' ? 'e.g. claude-opus-4-6' : tier === 'mid' ? 'e.g. claude-sonnet-4-5' : 'e.g. claude-haiku-4-5-20251001'}
+                      defaultValue={currentModels[tier] || ''}
+                      onBlur={async (e) => {
+                        const val = e.target.value.trim();
+                        const models = { ...(selectedProject?.config?.models || {}) };
+                        if (val) models[tier] = val; else delete models[tier];
+                        try {
+                          await authFetch(projectApi('/models'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ models })
+                          });
+                          await fetchProjectData();
+                          setToast(`${tier} tier model updated`);
+                        } catch {}
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                      className="flex-1 min-w-0 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Danger Zone */}
         {isWriteMode && (
           <div className="border-t border-red-200 dark:border-red-900 pt-5 mt-5">

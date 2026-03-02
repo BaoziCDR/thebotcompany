@@ -156,6 +156,7 @@ function App() {
   const [loginModal, setLoginModal] = useState(false)
   const [loginInput, setLoginInput] = useState('')
   const [budgetInfoModal, setBudgetInfoModal] = useState(false)
+  const [showApiKeyHelp, setShowApiKeyHelp] = useState(false)
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem('tbc_notifications') === 'true')
   const [reportsPanelOpen, setReportsPanelOpen] = useState(false)
   const [focusedReportId, setFocusedReportId] = useState(null)
@@ -1231,7 +1232,16 @@ function App() {
           </div>
         </div>
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-5">
-          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">API Keys</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">API Keys</h3>
+            <button
+              onClick={() => setShowApiKeyHelp(true)}
+              className="text-neutral-400 hover:text-blue-500 dark:text-neutral-500 dark:hover:text-blue-400 transition-colors"
+              title="How to get API keys"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+          </div>
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Paste any API key — provider is auto-detected from the key prefix.</p>
           <div className="py-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -3032,6 +3042,80 @@ function App() {
             <p>The <strong>maximum time</strong> an individual agent is allowed to run before being killed.</p>
             <p>If an agent exceeds this limit, it will be forcefully terminated and the orchestrator moves to the next agent.</p>
             <p><strong>Never</strong> means no timeout — agents run until they complete naturally. Use with caution as stuck agents can block the entire cycle.</p>
+          </div>
+        </ModalContent>
+      </Modal>
+
+      {/* API Key Help Modal */}
+      <Modal open={showApiKeyHelp} onClose={() => setShowApiKeyHelp(false)}>
+        <ModalHeader onClose={() => setShowApiKeyHelp(false)}>
+          How to Get API Keys
+        </ModalHeader>
+        <ModalContent>
+          <div className="space-y-5 text-sm text-neutral-700 dark:text-neutral-300">
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">Anthropic (Claude)</h3>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Go to <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline">console.anthropic.com</a></li>
+                <li>Create an account or sign in</li>
+                <li>Navigate to the API Keys section</li>
+                <li>Create a new API key (starts with <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">sk-ant-</code>)</li>
+              </ol>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">OpenAI</h3>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline">platform.openai.com/api-keys</a></li>
+                <li>Create an account or sign in</li>
+                <li>Create a new API key (starts with <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">sk-</code>)</li>
+              </ol>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">Google (Gemini)</h3>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline">aistudio.google.com/apikey</a></li>
+                <li>Sign in with your Google account</li>
+                <li>Create an API key (starts with <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">AIzaSy</code>)</li>
+              </ol>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">MiniMax</h3>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Go to <a href="https://platform.minimaxi.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline">platform.minimaxi.com</a></li>
+                <li>Create an account and navigate to API Keys</li>
+                <li>Generate a new key</li>
+              </ol>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">OpenAI Codex (ChatGPT Subscription)</h3>
+              <ul className="list-disc list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>No API key needed — uses your ChatGPT Plus/Pro subscription via OAuth</li>
+                <li>Use the login endpoint or set provider to <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">openai-codex</code> in project settings</li>
+                <li>Authenticate via browser when prompted</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">OpenRouter</h3>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline">openrouter.ai/keys</a></li>
+                <li>Create an account</li>
+                <li>Generate an API key</li>
+              </ol>
+            </div>
+
+            <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">Tips</h3>
+              <ul className="list-disc list-inside space-y-1 text-neutral-600 dark:text-neutral-400">
+                <li>Keys are stored locally on the server in <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">~/.thebotcompany/.env</code></li>
+                <li>Each key is auto-detected by its prefix</li>
+                <li>You can configure different providers per project</li>
+              </ul>
+            </div>
           </div>
         </ModalContent>
       </Modal>

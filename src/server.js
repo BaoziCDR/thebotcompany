@@ -15,7 +15,7 @@ import yaml from 'js-yaml';
 import Database from 'better-sqlite3';
 import { runAgentWithAPI } from './agent-runner.js';
 import { getProvider } from './providers/index.js';
-import { loadTokens as loadCodexTokens, clearTokens as clearCodexTokens, startDeviceCodeFlow, pollForToken, getAccessToken as getCodexAccessToken } from './oauth-codex.js';
+import { loadTokens as loadCodexTokens, clearTokens as clearCodexTokens, startAuthorizationFlow, getAccessToken as getCodexAccessToken } from './oauth-codex.js';
 import webpush from 'web-push';
 import { config as loadDotenv } from 'dotenv';
 
@@ -2072,36 +2072,13 @@ const server = http.createServer(async (req, res) => {
     if (!requireWrite(req, res)) return;
     const projectId = url.searchParams.get('project') || null;
     try {
-      const deviceCode = await startDeviceCodeFlow();
+      const flow = await startAuthorizationFlow(projectId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(deviceCode));
-
-      // Start polling in the background (non-blocking)
-      pollForToken(deviceCode.device_code, deviceCode.interval || 5, deviceCode.expires_in || 900, projectId)
-        .catch(() => {}); // Errors are non-fatal; user can retry
+      res.end(JSON.stringify({ authorization_url: flow.authorization_url }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
-    return;
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/openai-codex/poll') {
-    if (!requireWrite(req, res)) return;
-    const projectId = url.searchParams.get('project') || null;
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', async () => {
-      try {
-        const { device_code, interval, expires_in } = JSON.parse(body);
-        const tokens = await pollForToken(device_code, interval || 5, expires_in || 900, projectId);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, authenticated: true }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
     return;
   }
 

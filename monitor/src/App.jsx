@@ -157,7 +157,7 @@ function App() {
   const [loginInput, setLoginInput] = useState('')
   const [budgetInfoModal, setBudgetInfoModal] = useState(false)
   const [showApiKeyHelp, setShowApiKeyHelp] = useState(false)
-  const [codexLoginState, setCodexLoginState] = useState(null) // null | { verification_uri_complete, user_code, device_code, interval, expires_in } | 'polling' | 'success' | 'error'
+  const [codexLoginState, setCodexLoginState] = useState(null) // null | 'polling' | 'waiting' | 'success' | 'error'
   const [projectCodexLoginState, setProjectCodexLoginState] = useState(null)
 
   // Check codex auth status on mount (global)
@@ -1365,7 +1365,7 @@ function App() {
                   >
                     Disconnect
                   </button>
-                ) : codexLoginState && typeof codexLoginState === 'object' ? (
+                ) : codexLoginState === 'waiting' ? (
                   <span className="text-xs text-blue-500 animate-pulse">Waiting for sign-in...</span>
                 ) : (
                   <button
@@ -1375,8 +1375,8 @@ function App() {
                         const res = await authFetch('/api/openai-codex/login', { method: 'POST' })
                         if (!res.ok) throw new Error('Failed')
                         const data = await res.json()
-                        setCodexLoginState(data)
-                        window.open(data.verification_uri_complete || data.verification_uri, '_blank')
+                        setCodexLoginState('waiting')
+                        window.open(data.authorization_url, '_blank')
                         const pollInterval = setInterval(async () => {
                           try {
                             const statusRes = await fetch('/api/openai-codex/status')
@@ -1387,11 +1387,11 @@ function App() {
                               setToast('ChatGPT account connected')
                             }
                           } catch {}
-                        }, (data.interval || 5) * 1000)
+                        }, 3000)
                         setTimeout(() => {
                           clearInterval(pollInterval)
                           setCodexLoginState(prev => prev === 'success' ? prev : 'error')
-                        }, (data.expires_in || 900) * 1000)
+                        }, 300000)
                       } catch {
                         setCodexLoginState('error')
                       }
@@ -1403,10 +1403,9 @@ function App() {
                   </button>
                 )}
               </div>
-              {codexLoginState && typeof codexLoginState === 'object' && (
+              {codexLoginState === 'waiting' && (
                 <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs">
-                  <p className="text-blue-700 dark:text-blue-300 mb-1">Sign in at the page that just opened. If prompted, enter code:</p>
-                  <code className="bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded font-bold text-sm">{codexLoginState.user_code}</code>
+                  <p className="text-blue-700 dark:text-blue-300">Complete sign-in in the browser tab that just opened.</p>
                 </div>
               )}
             </div>
@@ -1599,7 +1598,7 @@ function App() {
                 >
                   Disconnect
                 </button>
-              ) : projectCodexLoginState && typeof projectCodexLoginState === 'object' ? (
+              ) : projectCodexLoginState === 'waiting' ? (
                 <span className="text-xs text-blue-500 animate-pulse">Waiting for sign-in...</span>
               ) : (
                 <button
@@ -1610,8 +1609,8 @@ function App() {
                       const res = await authFetch(`/api/openai-codex/login?project=${encodeURIComponent(selectedProject.id)}`, { method: 'POST' })
                       if (!res.ok) throw new Error('Failed')
                       const data = await res.json()
-                      setProjectCodexLoginState(data)
-                      window.open(data.verification_uri_complete || data.verification_uri, '_blank')
+                      setProjectCodexLoginState('waiting')
+                      window.open(data.authorization_url, '_blank')
                       const pollInterval = setInterval(async () => {
                         try {
                           const statusRes = await fetch(`/api/openai-codex/status?project=${encodeURIComponent(selectedProject.id)}`)
@@ -1622,11 +1621,11 @@ function App() {
                             setToast('Project ChatGPT account connected')
                           }
                         } catch {}
-                      }, (data.interval || 5) * 1000)
+                      }, 3000)
                       setTimeout(() => {
                         clearInterval(pollInterval)
                         setProjectCodexLoginState(prev => prev === 'success' ? prev : null)
-                      }, (data.expires_in || 900) * 1000)
+                      }, 300000)
                     } catch {
                       setProjectCodexLoginState(null)
                     }
@@ -1638,10 +1637,9 @@ function App() {
                 </button>
               )}
             </div>
-            {projectCodexLoginState && typeof projectCodexLoginState === 'object' && (
+            {projectCodexLoginState === 'waiting' && (
               <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs">
-                <p className="text-blue-700 dark:text-blue-300 mb-1">Sign in at the page that just opened. If prompted, enter code:</p>
-                <code className="bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded font-bold text-sm">{projectCodexLoginState.user_code}</code>
+                <p className="text-blue-700 dark:text-blue-300">Complete sign-in in the browser tab that just opened.</p>
               </div>
             )}
             <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2">
@@ -3242,9 +3240,11 @@ function App() {
               <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400 mt-1">
                 <li>Go to the <strong>Models</strong> section in global or project settings</li>
                 <li>Click <strong>Login</strong> next to "OpenAI Codex (ChatGPT)"</li>
-                <li>A browser tab will open — sign in with your ChatGPT account</li>
+                <li>A browser tab opens — sign in with your ChatGPT account</li>
+                <li>The callback redirects to <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">localhost:1455</code> to complete auth</li>
                 <li>Once connected, select <code className="bg-neutral-100 dark:bg-neutral-700 px-1 rounded">openai-codex</code> models in your project</li>
               </ol>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-500">Requires browser access to the TBC host machine (localhost callback).</p>
             </div>
 
             <div>

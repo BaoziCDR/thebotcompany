@@ -80,13 +80,20 @@ function Panel({ open, onClose, children, id: propId }) {
   React.useEffect(() => {
     if (open) {
       _register(id, () => onCloseRef.current?.())
+      // Lock body scroll on mobile when panel is open (full-screen overlay)
+      const isMobile = window.innerWidth < 768
+      if (isMobile) document.body.style.overflow = 'hidden'
     } else {
       _unregister(id)
+      if (!_activePanelId) document.body.style.overflow = ''
     }
   }, [open, id])
 
   React.useEffect(() => {
-    return () => _unregister(id)
+    return () => {
+      _unregister(id)
+      if (!_activePanelId) document.body.style.overflow = ''
+    }
   }, [id])
 
   const isActive = renderedId === id
@@ -103,7 +110,7 @@ function Panel({ open, onClose, children, id: propId }) {
           onClick={onClose}
         />
         <div
-          className={`fixed inset-0 bg-white dark:bg-neutral-800 flex flex-col overflow-hidden transition-transform duration-300 ease-in-out ${
+          className={`fixed inset-0 bg-white dark:bg-neutral-800 flex flex-col overflow-hidden overscroll-contain transition-transform duration-300 ease-in-out ${
             shouldAnimate ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
@@ -115,7 +122,7 @@ function Panel({ open, onClose, children, id: propId }) {
 
   // Desktop: portal into PanelSlot
   const desktopContent = _slotRef ? createPortal(
-    <div className="hidden md:flex md:flex-col w-full h-full overflow-hidden">
+    <div className="hidden md:flex md:flex-col w-full h-full overflow-hidden overscroll-contain">
       {children}
     </div>,
     _slotRef
@@ -169,7 +176,7 @@ function PanelHeader({ children, onClose }) {
 }
 
 function PanelContent({ children, onScroll }) {
-  return <div className="p-4 flex-1 overflow-y-auto overflow-x-hidden" onScroll={onScroll}>{children}</div>
+  return <div className="p-4 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" onScroll={onScroll}>{children}</div>
 }
 
 function PanelProvider({ children }) {

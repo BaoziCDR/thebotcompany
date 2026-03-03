@@ -47,7 +47,7 @@ function detectTokenProvider(token) {
 const MODEL_TIERS = {
   anthropic: {
     high:  { model: 'claude-opus-4-6' },
-    mid:   { model: 'claude-sonnet-4-5' },
+    mid:   { model: 'claude-sonnet-4-6' },
     low:   { model: 'claude-haiku-4-5-20251001' },
   },
   openai: {

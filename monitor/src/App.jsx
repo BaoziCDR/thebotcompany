@@ -2779,7 +2779,7 @@ function App() {
                     {liveAgentLog && (
                       <>
                         <div
-                          className="py-2.5 bg-blue-50 dark:bg-blue-900/20 cursor-pointer transition-colors -mx-1 px-1 rounded"
+                          className="py-2.5 bg-blue-50 dark:bg-blue-900/20 cursor-pointer transition-colors -mx-1 px-2 rounded"
                           onClick={() => { setFocusedReportId('live'); setReportsPanelOpen(true); }}
                         >
                           <div className="flex items-center gap-2 mb-0.5">

@@ -262,6 +262,8 @@ class ProjectRunner {
     this.completionSuccess = false;
     this.completionMessage = null;
     this.consecutiveFailures = 0; // Track consecutive agent failures for auto-pause
+    this.currentAgentLog = [];
+    this.currentAgentModel = null;
     this._repo = null;
   }
 
@@ -839,6 +841,7 @@ class ProjectRunner {
       pauseReason: this.pauseReason || null,
       cycleCount: this.cycleCount,
       currentAgent: this.currentAgent,
+      currentAgentModel: this.currentAgentModel,
       currentAgentRuntime: this.currentAgentStartTime
         ? Math.floor((Date.now() - this.currentAgentStartTime) / 1000)
         : null,
@@ -883,6 +886,8 @@ class ProjectRunner {
       this.currentAgentProcess = null;
       this.currentAgent = null;
       this.currentAgentStartTime = null;
+      this.currentAgentLog = [];
+      this.currentAgentModel = null;
     }
     this.isPaused = true;
     this.pauseReason = 'Bootstrapping';
@@ -1657,6 +1662,8 @@ class ProjectRunner {
     this.currentAgent = null;
     this.currentAgentProcess = null;
     this.currentAgentStartTime = null;
+    this.currentAgentLog = [];
+    this.currentAgentModel = null;
 
     return { success, resultText, killedByTimeout: !!killedByTimeout };
   }
@@ -1685,6 +1692,8 @@ class ProjectRunner {
       this.currentAgent = null;
       this.currentAgentProcess = null;
       this.currentAgentStartTime = null;
+      this.currentAgentLog = [];
+      this.currentAgentModel = null;
       return { success: false, resultText: '' };
     }
 
@@ -1750,6 +1759,7 @@ class ProjectRunner {
 
     const tierLabel = resolved.reasoningEffort ? `${agentModel} (${resolved.reasoningEffort})` : agentModel;
     log(`Using API runner for ${agent.name} (model: ${tierLabel})`, this.id);
+    this.currentAgentModel = tierLabel;
 
     const result = await runAgentWithAPI({
       prompt: skillContent,
@@ -1760,7 +1770,11 @@ class ProjectRunner {
       timeoutMs: config.agentTimeoutMs || 0,
       env: agentEnv,
       abortSignal: runAbortController.signal,
-      log: (msg) => log(`  [${agent.name}] ${msg}`, this.id),
+      log: (msg) => {
+        log(`  [${agent.name}] ${msg}`, this.id);
+        this.currentAgentLog.push({ time: Date.now(), msg });
+        if (this.currentAgentLog.length > 500) this.currentAgentLog.shift();
+      },
     });
 
     return this._postProcessAgentRun(agent, config, {
@@ -2458,6 +2472,20 @@ const server = http.createServer(async (req, res) => {
       const lines = parseInt(url.searchParams.get('lines')) || 50;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ logs: runner.getLogs(lines) }));
+      return;
+    }
+
+    // GET /api/projects/:id/agent-log
+    if (req.method === 'GET' && subPath === 'agent-log') {
+      const running = runner.currentAgent !== null;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        running,
+        agent: runner.currentAgent,
+        model: runner.currentAgentModel,
+        startTime: runner.currentAgentStartTime,
+        log: running ? runner.currentAgentLog : [],
+      }));
       return;
     }
 

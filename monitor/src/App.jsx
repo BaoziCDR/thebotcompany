@@ -90,6 +90,21 @@ function ReportSummary({ reportId, projectId, summary: initialSummary, className
   )
 }
 
+function LiveDuration({ startTime }) {
+  const [display, setDisplay] = useState('')
+  useEffect(() => {
+    const update = () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      if (elapsed < 60) setDisplay(`${elapsed}s`)
+      else setDisplay(`${Math.floor(elapsed / 60)}m ${elapsed % 60}s`)
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [startTime])
+  return <span>{display}</span>
+}
+
 function App() {
   // Multi-project state
   const [projects, setProjects] = useState([])
@@ -159,6 +174,7 @@ function App() {
   const [showApiKeyHelp, setShowApiKeyHelp] = useState(false)
   const [codexLoginState, setCodexLoginState] = useState(null) // null | 'polling' | 'waiting' | 'success' | 'error'
   const [projectCodexLoginState, setProjectCodexLoginState] = useState(null)
+  const [liveAgentLog, setLiveAgentLog] = useState(null) // { agent, model, startTime, log: [{time, msg}] }
 
   // Check codex auth status on mount (global)
   useEffect(() => {
@@ -194,6 +210,14 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [reportsPanelOpen, focusedReportId])
+
+  // Auto-scroll live log to bottom when new entries arrive
+  useEffect(() => {
+    if (liveLogEndRef.current) {
+      liveLogEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [liveAgentLog?.log?.length])
+
   const [notifCenter, setNotifCenter] = useState(false)
   const [notifList, setNotifList] = useState([])
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -342,6 +366,7 @@ function App() {
   const [toast, setToast] = useState(null)
   const logsRef = useRef(null)
   const reportsScrollRef = useRef(null)
+  const liveLogEndRef = useRef(null)
   const prevAgentRef = useRef(null)
 
 
@@ -990,6 +1015,29 @@ function App() {
       }
     }
   }, [selectedProject?.id])
+
+  // Poll for live agent log when an agent is running
+  useEffect(() => {
+    if (!selectedProject?.currentAgent) {
+      setLiveAgentLog(null)
+      return
+    }
+    const fetchAgentLog = async () => {
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/agent-log`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.running) {
+          setLiveAgentLog({ agent: data.agent, model: data.model, startTime: data.startTime, log: data.log })
+        } else {
+          setLiveAgentLog(null)
+        }
+      } catch {}
+    }
+    fetchAgentLog()
+    const interval = setInterval(fetchAgentLog, 3000)
+    return () => clearInterval(interval)
+  }, [selectedProject?.id, selectedProject?.currentAgent])
 
   useEffect(() => {
     if (logsAutoFollow && logsRef.current) {
@@ -2732,7 +2780,33 @@ function App() {
                     const { scrollTop, scrollHeight, clientHeight } = e.target
                     if (scrollHeight - scrollTop - clientHeight < 100) loadMoreComments()
                   }}>
-                    {comments.length === 0 && !commentsLoading && <p className="text-sm text-neutral-400 dark:text-neutral-500 text-center py-4">No reports</p>}
+                    {liveAgentLog && (
+                      <>
+                        <div
+                          className="py-2.5 bg-blue-50 dark:bg-blue-900/20 cursor-pointer transition-colors -mx-1 px-1 rounded"
+                          onClick={() => { setFocusedReportId('live'); setReportsPanelOpen(true); }}
+                        >
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <Avatar className="w-5 h-5">
+                              <AvatarFallback className="bg-gradient-to-br from-green-400 to-emerald-500 text-white text-[9px]">
+                                {liveAgentLog.agent.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-100 capitalize">{liveAgentLog.agent}</span>
+                            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 ml-auto whitespace-nowrap flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                              <LiveDuration startTime={liveAgentLog.startTime} />
+                              {liveAgentLog.model && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5">{liveAgentLog.model}</Badge>}
+                            </span>
+                          </div>
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400 break-words leading-relaxed pl-7 italic">
+                            Running... ({liveAgentLog.log.length} log entries)
+                          </div>
+                        </div>
+                        {comments.length > 0 && <Separator className="my-1" />}
+                      </>
+                    )}
+                    {comments.length === 0 && !commentsLoading && !liveAgentLog && <p className="text-sm text-neutral-400 dark:text-neutral-500 text-center py-4">No reports</p>}
                     {comments.map((comment) => (
                       <div
                         key={comment.id}
@@ -3504,7 +3578,37 @@ function App() {
             if (scrollHeight - scrollTop - clientHeight < 100) loadMoreComments()
           }}>
           <div ref={reportsScrollRef}>
-            {comments.length === 0 && !commentsLoading && <p className="text-sm text-neutral-400 dark:text-neutral-500 text-center py-8">No reports found</p>}
+            {liveAgentLog && (
+              <div data-report-id="live" className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Avatar className="w-6 h-6 sm:w-8 sm:h-8">
+                    <AvatarFallback className="bg-gradient-to-br from-green-400 to-emerald-500 text-white text-xs">
+                      {liveAgentLog.agent.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-100 capitalize">{liveAgentLog.agent}</span>
+                  <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    Running
+                  </span>
+                  <span className="text-xs text-neutral-400 dark:text-neutral-500 flex items-center gap-1.5">
+                    <LiveDuration startTime={liveAgentLog.startTime} />
+                  </span>
+                  {liveAgentLog.model && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{liveAgentLog.model}</Badge>}
+                </div>
+                <div className="max-h-[400px] overflow-y-auto rounded bg-white/50 dark:bg-neutral-900/50 p-2 text-xs font-mono space-y-0.5">
+                  {liveAgentLog.log.length === 0 && <p className="text-neutral-400 italic">Waiting for output...</p>}
+                  {liveAgentLog.log.map((entry, i) => (
+                    <div key={i} className={`leading-relaxed ${entry.msg.startsWith('Tool:') ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-1 rounded' : 'text-neutral-600 dark:text-neutral-300'}`}>
+                      <span className="text-neutral-400 dark:text-neutral-500 mr-1.5">{new Date(entry.time).toLocaleTimeString()}</span>
+                      {entry.msg}
+                    </div>
+                  ))}
+                  <div ref={liveLogEndRef} />
+                </div>
+              </div>
+            )}
+            {comments.length === 0 && !commentsLoading && !liveAgentLog && <p className="text-sm text-neutral-400 dark:text-neutral-500 text-center py-8">No reports found</p>}
             {comments.map((comment, idx) => (
               <div key={comment.id} data-report-id={comment.id}>
                 {idx > 0 && <Separator className="my-4" />}

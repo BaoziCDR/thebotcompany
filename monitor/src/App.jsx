@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -212,18 +212,12 @@ function App() {
   }, [reportsPanelOpen, focusedReportId])
 
   // Auto-scroll live log to bottom when new entries arrive
-  const liveLogScrollCb = useCallback((node) => {
-    if (node) {
-      const container = node.parentElement
-      if (container) container.scrollTop = container.scrollHeight
-    }
-  }, [])
+  const liveLogContainerRef = useRef(null)
   useEffect(() => {
-    if (liveLogEndRef.current) {
-      const container = liveLogEndRef.current.parentElement
-      if (container) container.scrollTop = container.scrollHeight
+    if (liveLogContainerRef.current) {
+      liveLogContainerRef.current.scrollTop = liveLogContainerRef.current.scrollHeight
     }
-  }, [liveAgentLog?.log?.length])
+  })
 
   const [notifCenter, setNotifCenter] = useState(false)
   const [notifList, setNotifList] = useState([])
@@ -373,7 +367,7 @@ function App() {
   const [toast, setToast] = useState(null)
   const logsRef = useRef(null)
   const reportsScrollRef = useRef(null)
-  const liveLogEndRef = useRef(null)
+
   const prevAgentRef = useRef(null)
 
 
@@ -3604,7 +3598,7 @@ function App() {
                     </span>
                     {liveAgentLog.model && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{liveAgentLog.model}</Badge>}
                   </div>
-                  <div className="max-h-[400px] overflow-y-auto rounded bg-neutral-50 dark:bg-neutral-900/50 p-2 text-xs font-mono space-y-0.5 mt-1">
+                  <div ref={liveLogContainerRef} className="max-h-[400px] overflow-y-auto rounded bg-neutral-50 dark:bg-neutral-900/50 p-2 text-xs font-mono space-y-0.5 mt-1">
                     {liveAgentLog.log.length === 0 && <p className="text-neutral-400 italic">Waiting for output...</p>}
                     {liveAgentLog.log.map((entry, i) => (
                       <div key={i} className={`leading-relaxed break-words whitespace-pre-wrap ${entry.msg.startsWith('Tool:') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-300'}`}>
@@ -3612,7 +3606,6 @@ function App() {
                         {entry.msg}
                       </div>
                     ))}
-                    <div ref={(node) => { liveLogEndRef.current = node; liveLogScrollCb(node); }} />
                   </div>
                 </div>
                 <Separator className="my-4" />

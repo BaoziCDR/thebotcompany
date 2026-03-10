@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -211,7 +211,14 @@ function App() {
     }
   }, [reportsPanelOpen, focusedReportId])
 
-  // Auto-scroll live log to bottom when new entries arrive
+  const liveLogAtBottomRef = useRef(true)
+
+  // Keep liveLogAtBottomRef in sync as the user scrolls
+  const onLiveLogScroll = useCallback((e) => {
+    const el = e.currentTarget
+    liveLogAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  }, [])
+
 
 
   const [notifCenter, setNotifCenter] = useState(false)
@@ -361,6 +368,7 @@ function App() {
   const [projectLoading, setProjectLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const logsRef = useRef(null)
+  const liveLogRef = useRef(null)
   const reportsScrollRef = useRef(null)
 
   const prevAgentRef = useRef(null)
@@ -2317,7 +2325,6 @@ function App() {
           </ModalContent>
         </Modal>
 
-        {settingsModal}
         {/* Notification Center (project list) */}
         <Panel id="notifications" open={notifCenter} onClose={() => setNotifCenter(false)}>
           <PanelHeader onClose={() => setNotifCenter(false)}>
@@ -3037,8 +3044,8 @@ function App() {
       </Modal>
 
       {/* Bootstrap Panel */}
-      <Panel id="bootstrap" open={bootstrapModal.open} onClose={() => setBootstrapModal({ ...bootstrapModal, open: false })}>
-        <PanelHeader onClose={() => setBootstrapModal({ ...bootstrapModal, open: false })}>
+      <Panel id="bootstrap" open={bootstrapModal.open} onClose={() => setBootstrapModal(prev => ({ ...prev, open: false }))}>
+        <PanelHeader onClose={() => setBootstrapModal(prev => ({ ...prev, open: false }))}>
           Bootstrap Workspace
         </PanelHeader>
         <PanelContent>
@@ -3052,7 +3059,7 @@ function App() {
                 {bootstrapModal.preview.reason || 'Bootstrap is not available for this project.'}
               </div>
               <div className="flex justify-end">
-                <Button variant="outline" onClick={() => setBootstrapModal({ ...bootstrapModal, open: false })}>Close</Button>
+                <Button variant="outline" onClick={() => setBootstrapModal(prev => ({ ...prev, open: false }))}>Close</Button>
               </div>
             </div>
           ) : bootstrapModal.preview ? (
@@ -3169,7 +3176,7 @@ function App() {
               )}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setBootstrapModal({ ...bootstrapModal, open: false })}>Cancel</Button>
+                <Button variant="outline" onClick={() => setBootstrapModal(prev => ({ ...prev, open: false }))}>Cancel</Button>
                 <Button
                   onClick={executeBootstrap}
                   disabled={bootstrapModal.executing}
@@ -3191,7 +3198,7 @@ function App() {
                 </div>
               )}
               <div className="flex justify-end">
-                <Button variant="outline" onClick={() => setBootstrapModal({ ...bootstrapModal, open: false })}>Close</Button>
+                <Button variant="outline" onClick={() => setBootstrapModal(prev => ({ ...prev, open: false }))}>Close</Button>
               </div>
             </div>
           )}
@@ -3593,7 +3600,7 @@ function App() {
                     </span>
                     {liveAgentLog.model && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{liveAgentLog.model}</Badge>}
                   </div>
-                  <div ref={(el) => { if (el) el.scrollTop = el.scrollHeight }} className="max-h-[400px] overflow-y-auto rounded bg-neutral-50 dark:bg-neutral-900/50 p-2 text-xs font-mono space-y-0.5 mt-1">
+                  <div ref={liveLogRef} onScroll={onLiveLogScroll} className="max-h-[400px] overflow-y-auto rounded bg-neutral-50 dark:bg-neutral-900/50 p-2 text-xs font-mono space-y-0.5 mt-1">
                     {liveAgentLog.log.length === 0 && <p className="text-neutral-400 italic">Waiting for output...</p>}
                     {liveAgentLog.log.map((entry, i) => (
                       <div key={i} className={`leading-relaxed break-words whitespace-pre-wrap ${entry.msg.startsWith('Tool:') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-300'}`}>
@@ -3601,6 +3608,7 @@ function App() {
                         {entry.msg}
                       </div>
                     ))}
+                    <div ref={(el) => { if (el && liveLogAtBottomRef.current) el.scrollIntoView({ block: 'nearest' }) }} />
                   </div>
                 </div>
                 <Separator className="my-4" />

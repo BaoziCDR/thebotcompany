@@ -91,9 +91,6 @@ export function formatTools(canonicalTools) {
 function buildOptions({ token, isOAuth, reasoningEffort, signal }) {
   const opts = {};
 
-  if (token) {
-    opts.apiKey = token;
-  }
   if (signal) {
     opts.signal = signal;
   }
@@ -103,14 +100,20 @@ function buildOptions({ token, isOAuth, reasoningEffort, signal }) {
     opts.reasoning = reasoningEffort; // pi-ai accepts: 'minimal'|'low'|'medium'|'high'|'xhigh'
   }
 
-  // Anthropic OAuth needs custom headers
+  // Anthropic OAuth needs Bearer auth + custom headers
   if (isOAuth) {
+    // Don't set apiKey — use Authorization header instead
     opts.headers = {
+      'Authorization': `Bearer ${token}`,
       'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14',
       'user-agent': 'claude-cli/2.1.2 (external, cli)',
       'x-app': 'cli',
       'anthropic-dangerous-direct-browser-access': 'true',
     };
+    // pi-ai still needs an apiKey value to not throw — use a dummy that gets overridden by headers
+    opts.apiKey = 'oauth-via-header';
+  } else if (token) {
+    opts.apiKey = token;
   }
 
   return opts;

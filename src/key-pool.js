@@ -207,10 +207,20 @@ export async function resolveKeyForProject(projectConfig, providerHint, getOAuth
     if (keySelection.fallback === false) return null;
   }
 
-  // Use global pool order — first enabled, non-rate-limited key wins
-  for (const key of sorted) {
-    if (isRateLimited(key.id)) continue;
-    if (keySelection?.keyId && key.id === keySelection.keyId) continue; // already tried
+  // Use global pool order — prefer keys matching provider hint, then any available
+  const candidates = sorted.filter(k => !isRateLimited(k.id) && !(keySelection?.keyId && k.id === keySelection.keyId));
+
+  // First pass: prefer keys matching the provider hint
+  if (providerHint) {
+    for (const key of candidates) {
+      if (key.provider !== providerHint) continue;
+      const token = await resolveToken(key, getOAuthToken);
+      if (token) return { token, provider: key.provider, keyId: key.id, type: key.type || 'api' };
+    }
+  }
+
+  // Second pass: any available key (cross-provider fallback)
+  for (const key of candidates) {
     const token = await resolveToken(key, getOAuthToken);
     if (token) return { token, provider: key.provider, keyId: key.id, type: key.type || 'api' };
   }

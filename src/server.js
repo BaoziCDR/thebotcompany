@@ -3010,6 +3010,7 @@ const server = http.createServer(async (req, res) => {
     const summarizeMatch = req.method === 'POST' && subPath.match(/^reports\/(\d+)\/summarize$/);
     if (summarizeMatch) {
       const reportId = parseInt(summarizeMatch[1], 10);
+      let keyResult = null;
       try {
         const db = runner.getDb();
         try { db.exec('ALTER TABLE reports ADD COLUMN summary TEXT'); } catch {}
@@ -3029,7 +3030,7 @@ const server = http.createServer(async (req, res) => {
         const resolved = resolveModelTier('low', providerName);
         const model = resolved.model;
 
-        const keyResult = await resolveKeyForProject(config, providerName, oauthGetter);
+        keyResult = await resolveKeyForProject(config, providerName, oauthGetter);
         const token = keyResult?.token || config.setupToken || null;
 
         if (!token) { db.close(); res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No API token configured' })); return; }

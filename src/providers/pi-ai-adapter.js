@@ -137,6 +137,16 @@ export async function callModel(piModel, systemPrompt, messages, tools, opts = {
 
   const assistantMsg = await completeSimple(piModel, context, piOpts);
 
+  // pi-ai returns error responses instead of throwing — surface them as exceptions
+  if (assistantMsg.stopReason === 'error' || assistantMsg.stopReason === 'aborted') {
+    const errMsg = assistantMsg.errorMessage || `API call failed (stopReason: ${assistantMsg.stopReason})`;
+    const err = new Error(errMsg);
+    // Try to extract HTTP status from the error message for retry logic
+    const statusMatch = errMsg.match(/status(?:\s+code)?:?\s*(\d{3})/i);
+    if (statusMatch) err.status = parseInt(statusMatch[1], 10);
+    throw err;
+  }
+
   return normalizeResponse(assistantMsg);
 }
 
@@ -160,13 +170,11 @@ function normalizeResponse(assistantMsg) {
     // thinking blocks are handled internally by pi-ai
   }
 
-  // Map stop reasons
+  // Map stop reasons (error/aborted are caught in callModel before reaching here)
   const stopReasonMap = {
     stop: 'end_turn',
     toolUse: 'tool_use',
     length: 'max_tokens',
-    error: 'end_turn',
-    aborted: 'end_turn',
   };
 
   return {

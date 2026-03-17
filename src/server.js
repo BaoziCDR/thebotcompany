@@ -14,7 +14,7 @@ import { spawn, execSync } from 'child_process';
 import yaml from 'js-yaml';
 import Database from 'better-sqlite3';
 import { runAgentWithAPI } from './agent-runner.js';
-import { resolveModel, callModel, buildUserMessage } from './providers/index.js';
+import { resolveModel, callModel, buildUserMessage, getModels as getPiModels } from './providers/index.js';
 import { startOAuthLogin, submitManualCode, checkOAuthStatus, getAccessToken as getOAuthAccessToken, clearCredentials as clearOAuthCredentials, listOAuthProviders, loadCredentials as loadOAuthCredentials } from './oauth.js';
 import {
   loadKeyPool, addKey, addOAuthKey, removeKey, updateKey, reorderKeys,
@@ -81,7 +81,13 @@ function resolveModelTier(tierOrModel, provider, projectModels) {
   const tier = (tierOrModel || '').toLowerCase().trim();
   // Project-level model overrides take priority
   if (projectModels && projectModels[tier]) {
-    return { model: projectModels[tier] };
+    const override = projectModels[tier];
+    // Support "model@effort" format (e.g. "gpt-5.3-codex@xhigh")
+    if (override.includes('@')) {
+      const [model, reasoningEffort] = override.split('@', 2);
+      return { model, reasoningEffort };
+    }
+    return { model: override };
   }
   const tiers = MODEL_TIERS[provider];
   if (tiers && tiers[tier]) {
@@ -1715,38 +1721,11 @@ class ProjectRunner {
 
     const agentTierOrModel = agent.rawModel || config.model || 'mid';
 
-    // Detect provider hint for tier resolution
-    // Legacy support: check setupToken/setupTokenProvider, then key pool, then env fallback
-    let providerHint;
-    if (config.setupTokenProvider) {
-      providerHint = config.setupTokenProvider;
-    } else if (config.setupToken) {
-      providerHint = detectProviderFromToken(config.setupToken);
-    } else {
-      // Determine provider from key pool (first enabled key) or env vars
-      const poolSafe = getKeyPoolSafe();
-      const firstKey = poolSafe.keys.find(k => k.enabled);
-      if (firstKey) {
-        providerHint = firstKey.provider;
-      } else if (process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
-        providerHint = 'anthropic';
-      } else if (process.env.OPENAI_API_KEY) {
-        providerHint = 'openai';
-      } else {
-        providerHint = 'anthropic';
-      }
-    }
-
-    // Resolve tier to concrete model + optional reasoning effort
-    const resolved = resolveModelTier(agentTierOrModel, providerHint, config.models);
-    const agentModel = resolved.model;
-    const reasoningEffort = resolved.reasoningEffort || null;
-
-    // Resolve token from key pool (with rate-limit-aware rotation)
+    // Resolve token from key pool first — provider comes from the resolved key
     const oauthTokenGetter = async (authFile, provider) => {
       return getOAuthAccessToken(provider, this.id);
     };
-    const keyResult = await resolveKeyForProject(config, providerHint, oauthTokenGetter);
+    const keyResult = await resolveKeyForProject(config, null, oauthTokenGetter);
     let resolvedToken = keyResult?.token || null;
     let resolvedKeyId = keyResult?.keyId || null;
 
@@ -1754,6 +1733,23 @@ class ProjectRunner {
     if (!resolvedToken && config.setupToken) {
       resolvedToken = config.setupToken;
     }
+
+    // Derive provider from the resolved key
+    let providerHint;
+    if (keyResult?.provider) {
+      providerHint = keyResult.provider;
+    } else if (config.setupTokenProvider) {
+      providerHint = config.setupTokenProvider;
+    } else if (resolvedToken) {
+      providerHint = detectProviderFromToken(resolvedToken);
+    } else {
+      providerHint = 'anthropic';
+    }
+
+    // Resolve tier to concrete model + optional reasoning effort
+    const resolved = resolveModelTier(agentTierOrModel, providerHint, config.models);
+    const agentModel = resolved.model;
+    const reasoningEffort = resolved.reasoningEffort || null;
 
     if (!resolvedToken) {
       log(`No API token configured for ${agent.name} (model: ${agentModel}). Skipping agent run. Add a key in Settings.`, this.id);
@@ -2779,11 +2775,44 @@ const server = http.createServer(async (req, res) => {
       const hasProjectToken = !!projectToken;
       const safeConfig = { ...config };
       delete safeConfig.setupToken;
-      const codexCreds = loadOAuthCredentials('openai-codex');
-      const detectedProvider = config.setupTokenProvider || (projectToken ? detectProviderFromToken(projectToken) : null) || (process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : codexCreds?.access ? 'openai-codex' : 'anthropic');
       // Include key pool and selection info
       const keyPool = getKeyPoolSafe();
       const keySelection = config.keySelection || null;
+
+      // Determine effective provider from key selection
+      let detectedProvider = 'anthropic';
+      if (keySelection?.keyId) {
+        const selectedKey = keyPool.keys.find(k => k.id === keySelection.keyId);
+        if (selectedKey) detectedProvider = selectedKey.provider;
+      }
+      if (detectedProvider === 'anthropic') {
+        // Fallback detection for global default
+        const firstKey = keyPool.keys.find(k => k.enabled);
+        if (firstKey) detectedProvider = firstKey.provider;
+      }
+
+      // Build available models list per provider from pi-ai
+      // For models that support reasoning, generate combined "model@effort" options
+      const EFFORT_LEVELS = ['medium', 'high', 'xhigh'];
+      const availableModels = {};
+      for (const provider of Object.keys(MODEL_TIERS)) {
+        try {
+          const models = getPiModels(provider);
+          const entries = [];
+          for (const m of models) {
+            if (m.reasoning) {
+              // Model supports reasoning — add one entry per effort level
+              for (const effort of EFFORT_LEVELS) {
+                entries.push({ id: `${m.id}@${effort}`, name: `${m.name} (${effort})` });
+              }
+            } else {
+              entries.push({ id: m.id, name: m.name });
+            }
+          }
+          availableModels[provider] = entries;
+        } catch { availableModels[provider] = []; }
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         config: safeConfig, raw, hasProjectToken,
@@ -2791,6 +2820,7 @@ const server = http.createServer(async (req, res) => {
         provider: detectedProvider,
         tiers: MODEL_TIERS[detectedProvider] || {},
         allTiers: MODEL_TIERS,
+        availableModels,
         keyPool,
         keySelection,
       }));

@@ -196,7 +196,7 @@ export async function resolveKeyForProject(projectConfig, providerHint, getOAuth
 
   const keySelection = projectConfig?.keySelection;
 
-  // If project has a specific keyId selected
+  // If project references a specific key from the pool, try it first
   if (keySelection?.keyId) {
     const selected = sorted.find(k => k.id === keySelection.keyId);
     if (selected && !isRateLimited(selected.id)) {
@@ -207,22 +207,10 @@ export async function resolveKeyForProject(projectConfig, providerHint, getOAuth
     if (keySelection.fallback === false) return null;
   }
 
-  // Walk keys in order, matching provider if hint is given
-  // First pass: match provider hint
-  if (providerHint) {
-    for (const key of sorted) {
-      if (key.provider !== providerHint) continue;
-      if (isRateLimited(key.id)) continue;
-      if (keySelection?.keyId && key.id === keySelection.keyId) continue; // already tried
-      const token = await resolveToken(key, getOAuthToken);
-      if (token) return { token, provider: key.provider, keyId: key.id };
-    }
-  }
-
-  // Second pass: any enabled key
+  // Use global pool order — first enabled, non-rate-limited key wins
   for (const key of sorted) {
     if (isRateLimited(key.id)) continue;
-    if (keySelection?.keyId && key.id === keySelection.keyId) continue;
+    if (keySelection?.keyId && key.id === keySelection.keyId) continue; // already tried
     const token = await resolveToken(key, getOAuthToken);
     if (token) return { token, provider: key.provider, keyId: key.id };
   }

@@ -48,6 +48,18 @@ function detectTokenProvider(token) {
   return 'unknown';
 }
 
+// Parse retry cooldown from rate-limit error messages
+function parseSummarizeCooldown(message) {
+  if (!message) return 60_000;
+  const minMatch = message.match(/~?(\d+)\s*min/i);
+  if (minMatch) return parseInt(minMatch[1]) * 60_000;
+  const hourMatch = message.match(/(\d+)\s*h(?:ours?)?/i);
+  if (hourMatch) return parseInt(hourMatch[1]) * 3600_000;
+  const secMatch = message.match(/(\d+)\s*s(?:ec(?:onds?)?)?/i);
+  if (secMatch) return parseInt(secMatch[1]) * 1000;
+  return 60_000;
+}
+
 // Model tier system — maps abstract tiers to provider-specific models
 const MODEL_TIERS = {
   anthropic: {
@@ -1788,7 +1800,7 @@ class ProjectRunner {
       allowedRepo: this.repo || null,
       abortSignal: runAbortController.signal,
       keyId: resolvedKeyId,
-      onRateLimited: (kid) => markRateLimited(kid, 60_000),
+      onRateLimited: (kid, cooldownMs) => markRateLimited(kid, cooldownMs || 60_000),
       resolveNewToken: async () => {
         const newKey = await resolveKeyForProject(config, providerHint, oauthTokenGetter);
         if (newKey?.provider && newKey.provider !== providerHint) {
@@ -2998,6 +3010,7 @@ const server = http.createServer(async (req, res) => {
     const summarizeMatch = req.method === 'POST' && subPath.match(/^reports\/(\d+)\/summarize$/);
     if (summarizeMatch) {
       const reportId = parseInt(summarizeMatch[1], 10);
+      let keyResult = null;
       try {
         const db = runner.getDb();
         try { db.exec('ALTER TABLE reports ADD COLUMN summary TEXT'); } catch {}
@@ -3012,17 +3025,19 @@ const server = http.createServer(async (req, res) => {
         };
         const poolSafe = getKeyPoolSafe();
         const firstKey = poolSafe.keys.find(k => k.enabled);
-        const providerName = config.setupTokenProvider || firstKey?.provider || 'anthropic';
+        const providerHintForSummary = config.setupTokenProvider || firstKey?.provider || 'anthropic';
 
-        const resolved = resolveModelTier('low', providerName);
-        const model = resolved.model;
-
-        const keyResult = await resolveKeyForProject(config, providerName, oauthGetter);
+        keyResult = await resolveKeyForProject(config, providerHintForSummary, oauthGetter);
         const token = keyResult?.token || config.setupToken || null;
 
         if (!token) { db.close(); res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No API token configured' })); return; }
 
-        log(`Summarize report ${reportId}: provider=${providerName}, model=${model}`, runner.id);
+        // Use the resolved key's actual provider for model resolution (not the hint)
+        const actualProvider = keyResult?.provider || providerHintForSummary;
+        const resolved = resolveModelTier('low', actualProvider);
+        const model = resolved.model;
+
+        log(`Summarize report ${reportId}: provider=${actualProvider}, model=${model}`, runner.id);
 
         // Strip meta blocks from body for cleaner summarization
         const cleanBody = report.body
@@ -3034,14 +3049,15 @@ const server = http.createServer(async (req, res) => {
 
         const prompt = `Summarize this agent report in 5-8 words. Return ONLY the summary, nothing else.\n\n${cleanBody}`;
 
-        // Use pi-ai adapter for summarization (provider-agnostic)
+        // Use pi-ai adapter for summarization (same auth logic as agent calls)
         const { piModel } = resolveModel(model);
+        const isOAuth = keyResult?.type === 'oauth';
         const summaryResponse = await callModel(
           piModel,
           'You are a helpful assistant. Return ONLY the summary, nothing else.',
           [buildUserMessage(prompt)],
           [], // no tools
-          { token },
+          { token, isOAuth, provider: actualProvider },
         );
         const summary = summaryResponse.content?.trim() || null;
 
@@ -3053,6 +3069,12 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ summary }));
       } catch (e) {
         log(`Summarize error: ${e.message}`, runner.id);
+        // Mark key as rate-limited if the error indicates a usage/rate limit
+        if (keyResult?.keyId && /rate.limit|usage.limit|quota|429/i.test(e.message)) {
+          const cooldownMs = parseSummarizeCooldown(e.message);
+          markRateLimited(keyResult.keyId, cooldownMs);
+          log(`Summarize: marked key ${keyResult.keyId} rate-limited for ${Math.ceil(cooldownMs / 60_000)}m`, runner.id);
+        }
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
       }

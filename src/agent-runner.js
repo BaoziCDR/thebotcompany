@@ -19,6 +19,33 @@ import {
 } from './providers/index.js';
 
 // ---------------------------------------------------------------------------
+// Parse retry cooldown from error messages
+// Supports: "~162 min", "30s", "2 hours", "retry in 5m", "Retry-After: 120"
+// ---------------------------------------------------------------------------
+
+function parseRetryCooldown(message) {
+  if (!message) return 60_000; // default 1 min
+
+  // "~162 min" or "162 minutes"
+  const minMatch = message.match(/~?(\d+)\s*min/i);
+  if (minMatch) return parseInt(minMatch[1]) * 60_000;
+
+  // "2 hours" or "2h"
+  const hourMatch = message.match(/(\d+)\s*h(?:ours?)?/i);
+  if (hourMatch) return parseInt(hourMatch[1]) * 3600_000;
+
+  // "30s" or "30 seconds" or "retry in 30s"
+  const secMatch = message.match(/(\d+)\s*s(?:ec(?:onds?)?)?/i);
+  if (secMatch) return parseInt(secMatch[1]) * 1000;
+
+  // Retry-After header value (seconds)
+  const retryAfter = message.match(/retry.after:\s*(\d+)/i);
+  if (retryAfter) return parseInt(retryAfter[1]) * 1000;
+
+  return 60_000; // default 1 min
+}
+
+// ---------------------------------------------------------------------------
 // Git/gh sandbox: block unauthorized repo operations
 // ---------------------------------------------------------------------------
 function checkGitCommand(command, allowedRepo) {
@@ -682,11 +709,16 @@ export async function runAgentWithAPI(opts) {
           const status = err.status || err.code || 0;
           const isRetryable = status === 429 || status === 503 || /rate.limit|usage.limit|overloaded|unavailable|quota/i.test(err.message);
           if (isRetryable && attempt < MAX_RETRIES) {
-            // Notify caller about rate limit so key pool can rotate
+            // Parse cooldown from error message (supports "~162 min", "30s", "2 hours", etc.)
+            const cooldownMs = parseRetryCooldown(err.message);
+
+            // Mark key as rate-limited with actual cooldown duration
             if (onRateLimited && keyId) {
-              onRateLimited(keyId);
+              onRateLimited(keyId, cooldownMs);
+              log(`Key ${keyId} rate-limited for ${Math.ceil(cooldownMs / 60_000)}m`);
             }
-            // Try to get a new token from the key pool
+
+            // Try to get a new token from the key pool (will skip rate-limited keys)
             if (resolveNewToken) {
               try {
                 const newKey = await resolveNewToken();
@@ -704,16 +736,16 @@ export async function runAgentWithAPI(opts) {
                   } else {
                     log(`Rotated to key ${keyId} after rate limit`);
                   }
-                  continue; // retry immediately with new key
+                  continue; // retry immediately with new key — no sleep needed
                 }
               } catch {}
             }
-            // Parse retry-after from error message or use exponential backoff
-            const retryMatch = err.message.match(/retry in ([\d.]+)s/i);
-            const hintDelay = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 0;
-            const delaySec = Math.max(60, hintDelay); // at least 60s between retries
-            log(`API ${status} error, retrying in ${delaySec}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
-            await new Promise(r => setTimeout(r, delaySec * 1000));
+
+            // No fallback key available — wait out the cooldown (capped at 5 min per retry)
+            const waitMs = Math.min(cooldownMs, 5 * 60_000);
+            const waitSec = Math.ceil(waitMs / 1000);
+            log(`No fallback key, retrying in ${waitSec}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+            await new Promise(r => setTimeout(r, waitMs));
             if (aborted) {
               return makeResult(false, lastResultText || (abortReason === 'timeout' ? 'Agent timed out' : 'Agent was terminated'), { timedOut: abortReason === 'timeout' });
             }

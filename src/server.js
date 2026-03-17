@@ -1734,6 +1734,7 @@ class ProjectRunner {
     const keyResult = await resolveKeyForProject(config, null, oauthTokenGetter);
     let resolvedToken = keyResult?.token || null;
     let resolvedKeyId = keyResult?.keyId || null;
+    const resolvedKeyType = keyResult?.type || 'api';
 
     // Fallback: legacy setupToken (for un-migrated configs)
     if (!resolvedToken && config.setupToken) {
@@ -1778,6 +1779,8 @@ class ProjectRunner {
       prompt: skillContent,
       model: agentModel,
       token: resolvedToken,
+      keyType: resolvedKeyType,
+      provider: providerHint,
       reasoningEffort,
       cwd: this.path,
       timeoutMs: config.agentTimeoutMs || 0,

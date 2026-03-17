@@ -477,6 +477,8 @@ export async function runAgentWithAPI(opts) {
     prompt,
     model: rawModel = 'claude-opus-4-6',
     token: initialToken,
+    keyType = 'api',
+    provider: keyProvider = null,
     reasoningEffort,
     cwd,
     timeoutMs = 0,
@@ -493,7 +495,7 @@ export async function runAgentWithAPI(opts) {
   const { piModel } = resolveModel(rawModel);
   let token = initialToken;
   let keyId = initialKeyId;
-  const isOAuth = token && token.startsWith('sk-ant-oat');
+  const isOAuth = keyType === 'oauth';
 
   // Format tools for pi-ai
   const canonicalTools = getToolDefinitions();
@@ -633,7 +635,7 @@ export async function runAgentWithAPI(opts) {
             'Summarize this agent conversation history concisely. Focus on: what tasks were attempted, what succeeded/failed, what files were modified, current state, and any important decisions. Be specific about file paths, issue numbers, and error messages. Output only the summary.',
             [buildUserMessage(compactText.slice(0, 80000))],
             [], // no tools for summarization
-            { token, isOAuth, signal: abortController.signal },
+            { token, isOAuth, provider: keyProvider, signal: abortController.signal },
           );
 
           totalUsage.inputTokens += summaryResponse.usage.inputTokens;
@@ -667,7 +669,7 @@ export async function runAgentWithAPI(opts) {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           response = await callModel(piModel, systemPrompt, messages, tools, {
-            token, isOAuth, reasoningEffort, signal: abortController.signal,
+            token, isOAuth, provider: keyProvider, reasoningEffort, signal: abortController.signal,
           });
           break; // success
         } catch (err) {

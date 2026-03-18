@@ -229,7 +229,7 @@ export default function ProjectSettingsPanel({
                       saveModels({}).then(() => setToast('Model overrides disabled'));
                     } else {
                       const defaults = {};
-                      for (const tier of ['high', 'mid', 'low']) {
+                      for (const tier of ['high', 'mid', 'low', 'xlow']) {
                         if (providerTiers[tier]) defaults[tier] = providerTiers[tier].model;
                       }
                       setSelectedProject(prev => prev ? { ...prev, config: { ...prev.config, models: defaults } } : prev);
@@ -248,9 +248,9 @@ export default function ProjectSettingsPanel({
               </p>
             ) : hasOverrides ? (
               <div className="space-y-2">
-                {['high', 'mid', 'low'].map(tier => (
+                {['high', 'mid', 'low', 'xlow'].map(tier => (
                   <div key={tier} className="flex items-center gap-2">
-                    <span className={`text-xs font-bold w-10 shrink-0 ${tier === 'high' ? 'text-purple-500' : tier === 'mid' ? 'text-blue-500' : 'text-neutral-400'}`}>{tier.toUpperCase()}</span>
+                    <span className={`text-xs font-bold w-10 shrink-0 ${tier === 'high' ? 'text-purple-500' : tier === 'mid' ? 'text-blue-500' : tier === 'xlow' ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-400'}`}>{tier.toUpperCase()}</span>
                     <select
                       value={currentModels[tier] || ''}
                       onChange={(e) => {

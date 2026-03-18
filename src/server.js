@@ -63,29 +63,34 @@ function parseSummarizeCooldown(message) {
 // Model tier system — maps abstract tiers to provider-specific models
 const MODEL_TIERS = {
   anthropic: {
-    high:  { model: 'claude-opus-4-6' },
-    mid:   { model: 'claude-sonnet-4-6' },
-    low:   { model: 'claude-haiku-4-5-20251001' },
+    high:  { model: 'claude-opus-4-6', reasoningEffort: 'high' },
+    mid:   { model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
+    low:   { model: 'claude-sonnet-4-6' },
+    xlow:  { model: 'claude-haiku-4-5-20251001' },
   },
   openai: {
     high:  { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh' },
     mid:   { model: 'gpt-5.3-codex', reasoningEffort: 'high' },
     low:   { model: 'gpt-5.3-codex', reasoningEffort: 'medium' },
+    xlow:  { model: 'gpt-5.3-codex', reasoningEffort: 'low' },
   },
   google: {
     high:  { model: 'gemini-3.1-pro-preview', reasoningEffort: 'high' },
     mid:   { model: 'gemini-3.1-pro-preview', reasoningEffort: 'medium' },
     low:   { model: 'gemini-3-flash-preview' },
+    xlow:  { model: 'gemini-3-flash-preview' },
   },
   minimax: {
     high:  { model: 'minimax/MiniMax-M2.5' },
     mid:   { model: 'minimax/MiniMax-M2.5' },
     low:   { model: 'minimax/MiniMax-M2.5' },
+    xlow:  { model: 'minimax/MiniMax-M2.5' },
   },
   'openai-codex': {
     high:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'xhigh' },
     mid:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'high' },
     low:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'medium' },
+    xlow:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'low' },
   },
 };
 
@@ -3034,7 +3039,7 @@ const server = http.createServer(async (req, res) => {
 
         // Use the resolved key's actual provider for model resolution (not the hint)
         const actualProvider = keyResult?.provider || providerHintForSummary;
-        const resolved = resolveModelTier('low', actualProvider);
+        const resolved = resolveModelTier('xlow', actualProvider);
         const model = resolved.model;
 
         log(`Summarize report ${reportId}: provider=${actualProvider}, model=${model}`, runner.id);

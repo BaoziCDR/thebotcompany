@@ -2828,7 +2828,7 @@ const server = http.createServer(async (req, res) => {
       // Only show recent/relevant models, not the full historical catalog
       const EFFORT_LEVELS = ['medium', 'high', 'xhigh'];
       const ALLOWED_MODELS = {
-        anthropic: /^claude-(opus|sonnet|haiku)-4-[56]/,
+        anthropic: /^claude-(opus|sonnet)-4-6$|^claude-haiku-4-5-/,
         openai: /^(gpt-5\.[34]|o[34])/,
         'openai-codex': /^(gpt-5\.[34])/,
         google: /^gemini-[23]/,
@@ -2842,6 +2842,7 @@ const server = http.createServer(async (req, res) => {
           const entries = [];
           for (const m of models) {
             if (filter && !filter.test(m.id)) continue;
+            if (m.id.includes('latest')) continue; // skip aliases, use exact versions
             if (m.reasoning) {
               for (const effort of EFFORT_LEVELS) {
                 entries.push({ id: `${m.id}@${effort}`, name: `${m.name} (${effort})` });

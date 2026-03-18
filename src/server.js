@@ -1248,6 +1248,12 @@ class ProjectRunner {
       // Agent step: { "agentName": taskValue }
       const name = Object.keys(step).find(k => k !== 'delay');
       if (!name) continue;
+
+      // Skip agents already completed (supports resume after reboot)
+      if (this.completedAgents.includes(name.toLowerCase())) {
+        log(`Skipping ${name} (already completed this cycle)`, this.id);
+        continue;
+      }
       
       const value = step[name];
       const worker = freshWorkers.find(w => w.name.toLowerCase() === name.toLowerCase());
@@ -1273,6 +1279,8 @@ class ProjectRunner {
         total++;
         if (wResult && wResult.success) {
           succeeded = true;
+          this.completedAgents.push(name.toLowerCase());
+          this.saveState();
         } else {
           failures++;
           const wasTimeout = wResult && wResult.killedByTimeout;
@@ -1424,6 +1432,17 @@ class ProjectRunner {
           continue;
         }
 
+        // Resume interrupted schedule from previous cycle (e.g. after reboot)
+        if (this.currentSchedule && this.completedAgents.length > 0) {
+          log(`Resuming interrupted schedule (${this.completedAgents.length} agents already completed: [${this.completedAgents.join(', ')}])`, this.id);
+          const { total, failures } = await this.executeSchedule(this.currentSchedule, config);
+          cycleTotal += total;
+          cycleFailures += failures;
+          this.currentSchedule = null;
+          this.completedAgents = [];
+          this.saveState();
+        } else {
+
         const ares = managers.find(m => m.name === 'ares');
         if (ares) {
           // Build context for Ares (remaining includes this cycle)
@@ -1456,11 +1475,16 @@ class ProjectRunner {
 
           // Execute schedule steps (delays + workers)
           if (schedule) {
+            this.completedAgents = [];
             const { total, failures } = await this.executeSchedule(schedule, config);
             cycleTotal += total;
             cycleFailures += failures;
+            this.currentSchedule = null;
+            this.completedAgents = [];
+            this.saveState();
           }
         }
+        } // end else (no interrupted schedule)
         // Only count cycle if at least one agent succeeded
         if (cycleTotal > 0 && cycleFailures < cycleTotal) {
           this.milestoneCyclesUsed++;
@@ -1472,6 +1496,16 @@ class ProjectRunner {
 
       // ===== PHASE: VERIFICATION (Apollo + his workers) =====
       else if (this.phase === 'verification') {
+        // Resume interrupted verification schedule (e.g. after reboot)
+        if (this.currentSchedule && this.completedAgents.length > 0) {
+          log(`Resuming interrupted verification schedule (${this.completedAgents.length} agents already completed: [${this.completedAgents.join(', ')}])`, this.id);
+          const { total, failures } = await this.executeSchedule(this.currentSchedule, config);
+          cycleTotal += total;
+          cycleFailures += failures;
+          this.currentSchedule = null;
+          this.completedAgents = [];
+          this.saveState();
+        } else {
         const apollo = managers.find(m => m.name === 'apollo');
         if (apollo) {
           const apolloContext = `> **Milestone to verify:** ${this.milestoneDescription}\n\n`;
@@ -1508,9 +1542,13 @@ class ProjectRunner {
           // Execute schedule steps (delays + workers)
           if (schedule) {
             this.currentSchedule = schedule;
+            this.completedAgents = [];
             const { total, failures } = await this.executeSchedule(schedule, config);
             cycleTotal += total;
             cycleFailures += failures;
+            this.currentSchedule = null;
+            this.completedAgents = [];
+            this.saveState();
           }
 
           // Process decision
@@ -1541,6 +1579,7 @@ class ProjectRunner {
             this.saveState();
           }
         }
+        } // end else (no interrupted verification schedule)
       }
 
       // If no agent succeeded, don't count this cycle

@@ -63,29 +63,34 @@ function parseSummarizeCooldown(message) {
 // Model tier system — maps abstract tiers to provider-specific models
 const MODEL_TIERS = {
   anthropic: {
-    high:  { model: 'claude-opus-4-6' },
-    mid:   { model: 'claude-sonnet-4-6' },
-    low:   { model: 'claude-haiku-4-5-20251001' },
+    high:  { model: 'claude-opus-4-6', reasoningEffort: 'high' },
+    mid:   { model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
+    low:   { model: 'claude-sonnet-4-6' },
+    xlow:  { model: 'claude-haiku-4-5-20251001' },
   },
   openai: {
     high:  { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh' },
     mid:   { model: 'gpt-5.3-codex', reasoningEffort: 'high' },
     low:   { model: 'gpt-5.3-codex', reasoningEffort: 'medium' },
+    xlow:  { model: 'gpt-4.1-mini' },
   },
   google: {
     high:  { model: 'gemini-3.1-pro-preview', reasoningEffort: 'high' },
     mid:   { model: 'gemini-3.1-pro-preview', reasoningEffort: 'medium' },
     low:   { model: 'gemini-3-flash-preview' },
+    xlow:  { model: 'gemini-3-flash-preview' },
   },
   minimax: {
     high:  { model: 'minimax/MiniMax-M2.5' },
     mid:   { model: 'minimax/MiniMax-M2.5' },
     low:   { model: 'minimax/MiniMax-M2.5' },
+    xlow:  { model: 'minimax/MiniMax-M2.5' },
   },
   'openai-codex': {
     high:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'xhigh' },
     mid:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'high' },
     low:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'medium' },
+    xlow:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'low' },
   },
 };
 
@@ -1841,7 +1846,8 @@ class ProjectRunner {
         const newKey = await resolveKeyForProject(config, providerHint, oauthTokenGetter);
         if (newKey?.provider && newKey.provider !== providerHint) {
           // Provider changed — resolve model for new provider
-          const newResolved = resolveModelTier(agentTierOrModel, newKey.provider, config.models);
+          // Ignore project model overrides (they're provider-specific)
+          const newResolved = resolveModelTier(agentTierOrModel, newKey.provider, null);
           newKey.model = newResolved.model;
           newKey.reasoningEffort = newResolved.reasoningEffort || null;
         }
@@ -2855,16 +2861,25 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Build available models list per provider from pi-ai
-      // For models that support reasoning, generate combined "model@effort" options
+      // Only show recent/relevant models, not the full historical catalog
       const EFFORT_LEVELS = ['medium', 'high', 'xhigh'];
+      const ALLOWED_MODELS = {
+        anthropic: /^claude-(opus|sonnet)-4-6$|^claude-haiku-4-5-/,
+        openai: /^(gpt-5\.[34]|o[34])/,
+        'openai-codex': /^(gpt-5\.[34])/,
+        google: /^gemini-[23]/,
+        minimax: /MiniMax/,
+      };
       const availableModels = {};
       for (const provider of Object.keys(MODEL_TIERS)) {
         try {
           const models = getPiModels(provider);
+          const filter = ALLOWED_MODELS[provider];
           const entries = [];
           for (const m of models) {
+            if (filter && !filter.test(m.id)) continue;
+            if (m.id.includes('latest')) continue; // skip aliases, use exact versions
             if (m.reasoning) {
-              // Model supports reasoning — add one entry per effort level
               for (const effort of EFFORT_LEVELS) {
                 entries.push({ id: `${m.id}@${effort}`, name: `${m.name} (${effort})` });
               }
@@ -3070,7 +3085,7 @@ const server = http.createServer(async (req, res) => {
 
         // Use the resolved key's actual provider for model resolution (not the hint)
         const actualProvider = keyResult?.provider || providerHintForSummary;
-        const resolved = resolveModelTier('low', actualProvider);
+        const resolved = resolveModelTier('xlow', actualProvider);
         const model = resolved.model;
 
         log(`Summarize report ${reportId}: provider=${actualProvider}, model=${model}`, runner.id);

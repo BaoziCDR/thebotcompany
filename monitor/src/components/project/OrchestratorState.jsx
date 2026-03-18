@@ -227,6 +227,15 @@ export function ConfigCard({
               </button>
             </label>
             <div className="flex items-center">
+              {configForm.budgetPer24h > 0 && (
+                <button
+                  onClick={() => updateConfigField('budgetPer24h', 0)}
+                  className="mr-2 px-2 py-1.5 text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
+                  title="Remove budget limit"
+                >
+                  ✕
+                </button>
+              )}
               <button
                 onClick={() => updateConfigField('budgetPer24h', Math.max(0, (configForm.budgetPer24h || 0) - 20))}
                 className="px-2 py-1.5 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-l-md text-sm font-medium text-neutral-600 dark:text-neutral-300"
@@ -242,15 +251,6 @@ export function ConfigCard({
               >
                 +
               </button>
-              {configForm.budgetPer24h > 0 && (
-                <button
-                  onClick={() => updateConfigField('budgetPer24h', 0)}
-                  className="ml-2 px-2 py-1.5 text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
-                  title="Remove budget limit"
-                >
-                  ✕
-                </button>
-              )}
             </div>
           </div>
         </div>

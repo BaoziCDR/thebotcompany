@@ -90,7 +90,7 @@ const MODEL_TIERS = {
     high:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'xhigh' },
     mid:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'high' },
     low:   { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'medium' },
-    xlow:  { model: 'openai-codex/gpt-5.3-codex-spark' },
+    xlow:  { model: 'openai-codex/gpt-5.3-codex', reasoningEffort: 'low' },
   },
 };
 

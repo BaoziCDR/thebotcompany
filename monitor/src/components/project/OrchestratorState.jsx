@@ -24,8 +24,8 @@ export function OrchestratorStateCard({ selectedProject, globalUptime, controlAc
             </div>
           )}
           <div className="flex justify-between items-center">
-            <span className="text-neutral-600 dark:text-neutral-300">Cycle</span>
-            <span className="text-2xl font-mono font-bold">{selectedProject.cycleCount}</span>
+            <span className="text-neutral-600 dark:text-neutral-300">Epoch / Cycle</span>
+            <span className="text-2xl font-mono font-bold">{selectedProject.epochCount || 0}<span className="text-base text-neutral-400 dark:text-neutral-500 mx-1">/</span>{selectedProject.cycleCount}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-neutral-600 dark:text-neutral-300">Agent</span>

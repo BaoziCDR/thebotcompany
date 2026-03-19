@@ -290,7 +290,8 @@ class ProjectRunner {
     this.path = config.path.replace(/^~/, process.env.HOME);
     this.enabled = config.enabled !== false;
     this.archived = config.archived === true;
-    this.cycleCount = 0;
+    this.cycleCount = 0;   // Cycles: manager + worker runs
+    this.epochCount = 0;   // Epochs: full Athena → implementation → verification → Athena loops
     this.currentAgent = null;
     this.currentAgentProcess = null;
     this.currentAgentStartTime = null;
@@ -893,6 +894,7 @@ class ProjectRunner {
       paused: this.isPaused,
       pauseReason: this.pauseReason || null,
       cycleCount: this.cycleCount,
+      epochCount: this.epochCount,
       currentAgent: this.currentAgent,
       currentAgentModel: this.currentAgentModel,
       currentAgentRuntime: this.currentAgentStartTime
@@ -958,6 +960,7 @@ class ProjectRunner {
     // 2. Reset cycle count, phase, and save state
     this.setState({
       cycleCount: 0,
+      epochCount: 0,
       phase: 'athena',
       milestoneTitle: null,
       milestoneDescription: null,
@@ -1039,6 +1042,7 @@ class ProjectRunner {
       if (fs.existsSync(statePath)) {
         const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
         this.cycleCount = state.cycleCount || 0;
+        this.epochCount = state.epochCount || 0;
         this.completedAgents = state.completedAgents || [];
         this.currentCycleId = state.currentCycleId || null;
         this.currentSchedule = state.currentSchedule || null;
@@ -1075,6 +1079,7 @@ class ProjectRunner {
     try {
       const state = {
         cycleCount: this.cycleCount,
+        epochCount: this.epochCount || 0,
         completedAgents: this.completedAgents || [],
         currentCycleId: this.currentCycleId,
         currentSchedule: this.currentSchedule || null,
@@ -1375,7 +1380,9 @@ class ProjectRunner {
                   isFixRound: false,
                   phase: 'implementation',
                 });
-                log(`New milestone (${this.milestoneCyclesBudget} cycles): ${this.milestoneDescription.slice(0, 100)}...`, this.id);
+                this.epochCount++;
+                this.saveState();
+                log(`Epoch ${this.epochCount}: New milestone (${this.milestoneCyclesBudget} cycles): ${this.milestoneDescription.slice(0, 100)}...`, this.id);
                 broadcastEvent({ type: 'milestone', project: this.id, title: this.milestoneTitle, cycles: this.milestoneCyclesBudget });
               } catch (e) {
                 log(`Failed to parse milestone: ${e.message}`, this.id);

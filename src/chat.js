@@ -300,37 +300,24 @@ Project directory: ${worktreePath}
 Be concise and helpful. When asked about code, use the tools to look things up rather than guessing.`;
 
   // Convert stored messages to pi-ai format
+  // Only include text content from history (not tool calls/results) to avoid
+  // tool_use_id mismatches that cause API errors. Tool interactions are
+  // ephemeral within a single turn; the text summary is sufficient for context.
   const piMessages = [];
   for (const msg of session.messages) {
     if (msg.role === 'user') {
       piMessages.push(buildUserMessage(msg.content));
     } else if (msg.role === 'assistant') {
-      // Reconstruct pi-ai assistant message
-      const content = [];
-      if (msg.content) {
-        content.push({ type: 'text', text: msg.content });
+      const text = msg.content || '';
+      if (text.trim()) {
+        piMessages.push({
+          role: 'assistant',
+          content: [{ type: 'text', text }],
+          timestamp: Date.now(),
+        });
       }
-      if (msg.tool_calls) {
-        const calls = JSON.parse(msg.tool_calls);
-        for (const tc of calls) {
-          content.push({
-            type: 'toolCall',
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.input,
-          });
-        }
-      }
-      piMessages.push({
-        role: 'assistant',
-        content,
-        timestamp: Date.now(),
-      });
-    } else if (msg.role === 'tool_result') {
-      // Tool results stored as JSON
-      const results = JSON.parse(msg.content);
-      piMessages.push(...buildToolResultMessages(results));
     }
+    // Skip tool_result messages — they're captured in the assistant text summary
   }
 
   // Tool loop — max 10 iterations

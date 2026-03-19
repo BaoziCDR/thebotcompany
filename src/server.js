@@ -2756,8 +2756,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   // DELETE /api/projects/:id - Remove a project
-  if (req.method === 'DELETE' && pathParts[0] === 'api' && pathParts[1] === 'projects' && pathParts[2]) {
-    // Support both single-segment (m2sim) and two-segment (sarchlab/m2sim) IDs
+  // DELETE /api/projects/:id — only match exact project path (no sub-routes like /chats/1)
+  const isExactProjectDelete = req.method === 'DELETE' && pathParts[0] === 'api' && pathParts[1] === 'projects' && pathParts[2] && (
+    pathParts.length === 3 || // single-segment: /api/projects/m2sim
+    (pathParts.length === 4 && `${pathParts[2]}/${pathParts[3]}` && projects.has(`${pathParts[2]}/${pathParts[3]}`)) // two-segment: /api/projects/sarchlab/m2sim
+  ) && !(pathParts.length > 4); // NOT a sub-route like /chats/1
+  if (isExactProjectDelete) {
     const twoSegId = pathParts[3] ? `${pathParts[2]}/${pathParts[3]}` : null;
     const projectId = (twoSegId && projects.has(twoSegId)) ? twoSegId : pathParts[2];
     try {

@@ -371,6 +371,7 @@ export async function streamChatMessage(opts) {
   try {
     while (iteration < MAX_TOOL_ITERATIONS) {
       iteration++;
+      console.log(`[Chat] Session ${chatId}: iteration ${iteration}, messages: ${piMessages.length}`);
 
       const context = {
         systemPrompt,
@@ -414,12 +415,20 @@ export async function streamChatMessage(opts) {
 
           case 'error':
             const errMsg = event.error?.errorMessage || 'Stream error';
+            console.error(`[Chat] Stream error (session ${chatId}): ${errMsg}`);
             // Throw on rate-limit errors so caller can retry with fallback key
             if (/rate.limit|usage.limit|quota|429/i.test(errMsg)) {
               throw new Error(errMsg);
             }
+            // Save partial progress before stopping
+            if (fullAssistantText || assistantText) {
+              saveMessage(agentDir, chatId, 'assistant',
+                (fullAssistantText + assistantText).trim() + `\n\n⚠️ Error: ${errMsg}`,
+                allToolCalls.length > 0 ? allToolCalls : null);
+            }
             sseWrite({ type: 'error', content: errMsg });
             sseWrite({ type: 'done' });
+            activeStreams.delete(chatId);
             return;
         }
       }
@@ -496,10 +505,17 @@ export async function streamChatMessage(opts) {
     saveMessage(agentDir, chatId, 'assistant', fullAssistantText, allToolCalls.length > 0 ? allToolCalls : null);
 
   } catch (err) {
+    console.error(`[Chat] Error (session ${chatId}): ${err.message}`);
     // Re-throw rate-limit errors so caller can retry with fallback key
     if (/rate.limit|usage.limit|quota|429/i.test(err.message)) {
       activeStreams.delete(chatId);
       throw err;
+    }
+    // Save partial progress on error
+    if (fullAssistantText) {
+      saveMessage(agentDir, chatId, 'assistant',
+        fullAssistantText.trim() + `\n\n⚠️ Error: ${err.message}`,
+        allToolCalls.length > 0 ? allToolCalls : null);
     }
     sseWrite({ type: 'error', content: err.message });
   }

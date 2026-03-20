@@ -92,6 +92,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingToolCalls, setStreamingToolCalls] = useState([])
+  const [streamingBlocks, setStreamingBlocks] = useState([]) // ordered: {type:'text',content} | {type:'tool',...}
   const [lastFailedMessage, setLastFailedMessage] = useState(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -154,7 +155,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
                     const finalData = await finalRes.json()
                     if (finalData.session?.messages) setMessages(finalData.session.messages)
                     setStreaming(false)
-                    setStreamingText('')
+                    setStreamingText(''); setStreamingBlocks([])
                     setStreamingToolCalls([])
                     return
                 }
@@ -162,7 +163,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
             }
           }
           setStreaming(false)
-          setStreamingText('')
+          setStreamingText(''); setStreamingBlocks([])
           setStreamingToolCalls([])
         }
       } catch {}
@@ -204,7 +205,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
     setLastFailedMessage(null)
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setStreaming(true)
-    setStreamingText('')
+    setStreamingText(''); setStreamingBlocks([])
     setStreamingToolCalls([])
 
     try {
@@ -237,11 +238,20 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
               case 'text':
                 accText += data.content
                 setStreamingText(accText)
+                // Append to or update last text block
+                setStreamingBlocks(prev => {
+                  const last = prev[prev.length - 1]
+                  if (last && last.type === 'text') {
+                    return [...prev.slice(0, -1), { type: 'text', content: last.content + data.content }]
+                  }
+                  return [...prev, { type: 'text', content: data.content }]
+                })
                 break
 
               case 'tool_call':
                 accToolCalls = [...accToolCalls, { id: data.id, name: data.name, input: data.input }]
                 setStreamingToolCalls([...accToolCalls])
+                setStreamingBlocks(prev => [...prev, { type: 'tool', id: data.id, name: data.name, input: data.input }])
                 break
 
               case 'tool_result':
@@ -249,15 +259,19 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
                   tc.id === data.id ? { ...tc, output: data.output } : tc
                 )
                 setStreamingToolCalls([...accToolCalls])
+                setStreamingBlocks(prev => prev.map(b =>
+                  b.type === 'tool' && b.id === data.id ? { ...b, output: data.output } : b
+                ))
                 break
 
               case 'error':
                 accText += `\n\n⚠️ Error: ${data.content}`
                 setStreamingText(accText)
+                setStreamingBlocks(prev => [...prev, { type: 'text', content: `\n\n⚠️ Error: ${data.content}` }])
                 break
 
               case 'done':
-                // Finalize — add assistant message to messages list
+                // Finalize — add assistant message with ordered blocks
                 if (accText || accToolCalls.length > 0) {
                   setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -286,7 +300,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
       setLastFailedMessage(userMsg)
     } finally {
       setStreaming(false)
-      setStreamingText('')
+      setStreamingText(''); setStreamingBlocks([])
       setStreamingToolCalls([])
     }
   }
@@ -318,17 +332,16 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
           ))}
 
           {/* Streaming indicators */}
-          {streaming && (streamingToolCalls.length > 0 || streamingText) && (
+          {streaming && streamingBlocks.length > 0 && (
             <div className="flex justify-start mb-3">
               <div className="max-w-[90%]">
-                {streamingToolCalls.map((tc, i) => (
-                  <ToolCallBlock key={tc.id || i} name={tc.name} input={tc.input} output={tc.output} />
+                {streamingBlocks.map((block, i) => (
+                  block.type === 'tool'
+                    ? <ToolCallBlock key={block.id || i} name={block.name} input={block.input} output={block.output} />
+                    : <div key={i} className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
+                      </div>
                 ))}
-                {streamingText && (
-                  <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText}</ReactMarkdown>
-                  </div>
-                )}
               </div>
             </div>
           )}

@@ -14,7 +14,7 @@ import { spawn, execSync } from 'child_process';
 import yaml from 'js-yaml';
 import Database from 'better-sqlite3';
 import { runAgentWithAPI } from './agent-runner.js';
-import { listSessions as chatListSessions, createSession as chatCreateSession, getSession as chatGetSession, deleteSession as chatDeleteSession, streamChatMessage } from './chat.js';
+import { listSessions as chatListSessions, createSession as chatCreateSession, getSession as chatGetSession, deleteSession as chatDeleteSession, streamChatMessage, getActiveStream, isStreaming as isChatStreaming } from './chat.js';
 import { resolveModel, callModel, buildUserMessage, getModels as getPiModels } from './providers/index.js';
 import { startOAuthLogin, submitManualCode, checkOAuthStatus, getAccessToken as getOAuthAccessToken, clearCredentials as clearOAuthCredentials, listOAuthProviders, loadCredentials as loadOAuthCredentials } from './oauth.js';
 import {
@@ -3464,13 +3464,36 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Session not found' }));
         } else {
+          const chatId = parseInt(chatDetailMatch[1]);
+          const activeStream = getActiveStream(chatId);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ session }));
+          res.end(JSON.stringify({
+            session,
+            streaming: !!activeStream,
+            streamingContent: activeStream ? { text: activeStream.text, toolCalls: activeStream.toolCalls } : null,
+          }));
         }
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
       }
+      return;
+    }
+
+    // GET /api/projects/:id/chats/:chatId/stream — reconnect to active SSE stream
+    const chatStreamMatch = req.method === 'GET' && subPath.match(/^chats\/(\d+)\/stream$/);
+    if (chatStreamMatch) {
+      const chatId = parseInt(chatStreamMatch[1]);
+      const activeStream = getActiveStream(chatId);
+      if (!activeStream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+      activeStream.clients.add(res);
+      res.on('close', () => { activeStream.clients.delete(res); });
       return;
     }
 

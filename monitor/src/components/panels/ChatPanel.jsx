@@ -102,12 +102,73 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
       setMessages([])
       return
     }
-    fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}`)
-      .then(r => r.json())
-      .then(data => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}`)
+        if (cancelled) return
+        const data = await res.json()
         if (data.session?.messages) setMessages(data.session.messages)
-      })
-      .catch(() => {})
+
+        // If backend is still streaming, show current content and reconnect
+        if (data.streaming && data.streamingContent) {
+          setStreaming(true)
+          setStreamingText(data.streamingContent.text || '')
+          setStreamingToolCalls(data.streamingContent.toolCalls || [])
+
+          // Reconnect to SSE stream for remaining events
+          const evtRes = await fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}/stream`)
+          if (cancelled) return
+          const reader = evtRes.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let accText = data.streamingContent.text || ''
+          let accToolCalls = [...(data.streamingContent.toolCalls || [])]
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done || cancelled) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop()
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue
+              try {
+                const evt = JSON.parse(line.slice(6))
+                switch (evt.type) {
+                  case 'text':
+                    accText += evt.content
+                    setStreamingText(accText)
+                    break
+                  case 'tool_call':
+                    accToolCalls.push(evt)
+                    setStreamingToolCalls([...accToolCalls])
+                    break
+                  case 'tool_result':
+                    accToolCalls = accToolCalls.map(tc => tc.id === evt.id ? { ...tc, output: evt.output } : tc)
+                    setStreamingToolCalls([...accToolCalls])
+                    break
+                  case 'done':
+                    // Reload from backend to get final saved state
+                    const finalRes = await fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}`)
+                    const finalData = await finalRes.json()
+                    if (finalData.session?.messages) setMessages(finalData.session.messages)
+                    setStreaming(false)
+                    setStreamingText('')
+                    setStreamingToolCalls([])
+                    return
+                }
+              } catch {}
+            }
+          }
+          setStreaming(false)
+          setStreamingText('')
+          setStreamingToolCalls([])
+        }
+      } catch {}
+    }
+    load()
+    return () => { cancelled = true }
   }, [chatSession?.id, selectedProject?.id])
 
   // Auto-scroll

@@ -19,6 +19,21 @@ import {
 import { executeTool } from './agent-runner.js';
 
 // ---------------------------------------------------------------------------
+// Active stream tracking — in-memory state for reconnection
+// ---------------------------------------------------------------------------
+
+// Map of active streams: chatSessionId -> { text, toolCalls, sseClients }
+const activeStreams = new Map();
+
+export function getActiveStream(chatId) {
+  return activeStreams.get(chatId) || null;
+}
+
+export function isStreaming(chatId) {
+  return activeStreams.has(chatId);
+}
+
+// ---------------------------------------------------------------------------
 // Worktree management
 // ---------------------------------------------------------------------------
 
@@ -273,14 +288,20 @@ function getChatToolDefinitions() {
 export async function streamChatMessage(opts) {
   const { agentDir, projectPath, chatId, userMessage, model, token, provider, res, reasoningEffort } = opts;
 
-  // Track client connection — continue processing even if client disconnects
-  let clientConnected = true;
-  res.on('close', () => { clientConnected = false; });
+  // Initialize active stream tracking
+  const stream = { text: '', toolCalls: [], clients: new Set() };
+  activeStreams.set(chatId, stream);
 
-  // Safe SSE write — ignore errors when client disconnects
+  // Add the initial client
+  stream.clients.add(res);
+  res.on('close', () => { stream.clients.delete(res); });
+
+  // Broadcast to all connected clients (supports reconnection)
   const sseWrite = (obj) => {
-    if (!clientConnected) return;
-    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+    const data = `data: ${JSON.stringify(obj)}\n\n`;
+    for (const client of stream.clients) {
+      try { client.write(data); } catch {}
+    }
   };
 
   // Save user message
@@ -359,20 +380,23 @@ Be concise and helpful. When asked about code, use the tools to look things up r
         switch (event.type) {
           case 'text_delta':
             assistantText += event.delta;
+            stream.text += event.delta;
             sseWrite({ type: 'text', content: event.delta });
             break;
 
           case 'toolcall_end':
-            toolCalls.push({
+            const tc = {
               id: event.toolCall.id,
               name: event.toolCall.name,
               input: event.toolCall.arguments,
-            });
+            };
+            toolCalls.push(tc);
+            stream.toolCalls.push(tc);
             sseWrite({
               type: 'tool_call',
-              id: event.toolCall.id,
-              name: event.toolCall.name,
-              input: event.toolCall.arguments,
+              id: tc.id,
+              name: tc.name,
+              input: tc.input,
             });
             break;
 
@@ -424,6 +448,9 @@ Be concise and helpful. When asked about code, use the tools to look things up r
           });
           // Truncate output for SSE display
           const displayOutput = output.length > 2000 ? output.slice(0, 2000) + '\n... (truncated)' : output;
+          // Update stream tracking
+          const matchingTc = stream.toolCalls.find(t => t.id === tc.id);
+          if (matchingTc) matchingTc.output = displayOutput;
           sseWrite({
             type: 'tool_result',
             id: tc.id,
@@ -437,6 +464,8 @@ Be concise and helpful. When asked about code, use the tools to look things up r
             toolName: tc.name,
             content: errOutput,
           });
+          const matchingTc = stream.toolCalls.find(t => t.id === tc.id);
+          if (matchingTc) matchingTc.output = errOutput;
           sseWrite({
             type: 'tool_result',
             id: tc.id,
@@ -460,10 +489,12 @@ Be concise and helpful. When asked about code, use the tools to look things up r
   } catch (err) {
     // Re-throw rate-limit errors so caller can retry with fallback key
     if (/rate.limit|usage.limit|quota|429/i.test(err.message)) {
+      activeStreams.delete(chatId);
       throw err;
     }
     sseWrite({ type: 'error', content: err.message });
   }
 
   sseWrite({ type: 'done' });
+  activeStreams.delete(chatId);
 }

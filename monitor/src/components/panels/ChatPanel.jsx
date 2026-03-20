@@ -199,9 +199,19 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
         }
       }
     } catch (err) {
-      // On network error, remove the user message (will be retried) and show error
+      // On network error, reload conversation from backend (it has saved state)
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setMessages(data.session?.messages?.map(m => ({
+            role: m.role,
+            content: m.content,
+            tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,
+          })).filter(m => m.role === 'user' || m.role === 'assistant') || [])
+        }
+      } catch {}
       setLastFailedMessage(userMsg)
-      setMessages(prev => prev.slice(0, -1)) // remove the user message we just added
     } finally {
       setStreaming(false)
       setStreamingText('')

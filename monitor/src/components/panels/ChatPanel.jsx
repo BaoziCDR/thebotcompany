@@ -108,15 +108,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
         const res = await fetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}`)
         if (cancelled) return
         const data = await res.json()
-        if (data.session?.messages) {
-          // Deduplicate consecutive same-content user messages
-          const msgs = data.session.messages.filter((m, i, arr) => {
-            if (i === 0) return true
-            const prev = arr[i - 1]
-            return !(m.role === 'user' && prev.role === 'user' && m.content === prev.content)
-          })
-          setMessages(msgs)
-        }
+        if (data.session?.messages) setMessages(data.session.messages)
 
         // If backend is still streaming, show current content and reconnect
         if (data.streaming && data.streamingContent) {

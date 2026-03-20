@@ -14,7 +14,7 @@ import { spawn, execSync } from 'child_process';
 import yaml from 'js-yaml';
 import Database from 'better-sqlite3';
 import { runAgentWithAPI } from './agent-runner.js';
-import { listSessions as chatListSessions, createSession as chatCreateSession, getSession as chatGetSession, deleteSession as chatDeleteSession, streamChatMessage, getActiveStream, isStreaming as isChatStreaming } from './chat.js';
+import { listSessions as chatListSessions, createSession as chatCreateSession, getSession as chatGetSession, deleteSession as chatDeleteSession, streamChatMessage, getActiveStream, isStreaming as isChatStreaming, saveMessage as chatSaveMessage } from './chat.js';
 import { resolveModel, callModel, buildUserMessage, getModels as getPiModels } from './providers/index.js';
 import { startOAuthLogin, submitManualCode, checkOAuthStatus, getAccessToken as getOAuthAccessToken, clearCredentials as clearOAuthCredentials, listOAuthProviders, loadCredentials as loadOAuthCredentials } from './oauth.js';
 import {
@@ -3543,6 +3543,9 @@ const server = http.createServer(async (req, res) => {
           // Resolve model (use mid tier)
           const providerHint = keyResult.provider || detectProviderFromToken(keyResult.token);
           const resolved = resolveModelTier(config.model || 'mid', providerHint, config.models);
+
+          // Save user message once (before any retry/fallback)
+          chatSaveMessage(runner.agentDir, chatId, 'user', data.message.trim());
 
           // SSE headers
           res.writeHead(200, {

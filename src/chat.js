@@ -155,7 +155,7 @@ export function deleteSession(agentDir, chatId) {
   }
 }
 
-function saveMessage(agentDir, sessionId, role, content, toolCalls = null) {
+export function saveMessage(agentDir, sessionId, role, content, toolCalls = null) {
   const db = getChatDb(agentDir);
   try {
     db.prepare(
@@ -305,14 +305,8 @@ export async function streamChatMessage(opts) {
   };
 
   // Save user message
-  // Only save user message if it's not a duplicate of the last message
-  const db = getChatDb(agentDir);
-  try {
-    const lastMsg = db.prepare('SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(chatId);
-    if (!(lastMsg && lastMsg.role === 'user' && lastMsg.content === userMessage)) {
-      saveMessage(agentDir, chatId, 'user', userMessage);
-    }
-  } finally { db.close(); }
+  // NOTE: user message is saved by the caller (server.js) before calling this
+  // function, so retries on rate-limit fallback don't duplicate it.
   maybeUpdateTitle(agentDir, chatId, userMessage);
 
   // Ensure worktree

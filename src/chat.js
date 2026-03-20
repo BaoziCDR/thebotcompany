@@ -324,11 +324,18 @@ export async function streamChatMessage(opts) {
   const canonicalTools = getChatToolDefinitions();
   const piTools = formatTools(canonicalTools);
 
-  const systemPrompt = `You are a helpful AI assistant for a software project. You can read, edit, and run commands in the project's codebase.
-
-Project directory: ${worktreePath}
-
-Be concise and helpful. When asked about code, use the tools to look things up rather than guessing.`;
+    // Load chat skill file
+  const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const skillPath = path.join(ROOT, 'agent', 'chat.md');
+  let skillContent = '';
+  try {
+    skillContent = fs.readFileSync(skillPath, 'utf-8');
+    // Strip frontmatter
+    skillContent = skillContent.replace(/^---[\s\S]*?---\s*/, '');
+  } catch {
+    skillContent = 'You are a helpful AI assistant for a software project.';
+  }
+  const systemPrompt = skillContent.replace(/\{worktree_path\}/g, worktreePath);
 
   // Convert stored messages to pi-ai format
   // Only include text content from history (not tool calls/results) to avoid

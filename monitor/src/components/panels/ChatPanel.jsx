@@ -111,6 +111,11 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
         const data = await res.json()
         if (data.session?.messages) setMessages(data.session.messages)
 
+        // If backend is NOT streaming, the response completed — clear retry banner
+        if (!data.streaming) {
+          setLastFailedMessage(null)
+        }
+
         // If backend is still streaming, show current content and reconnect
         if (data.streaming && data.streamingContent) {
           setStreaming(true)
@@ -157,6 +162,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
                     setStreaming(false)
                     setStreamingText(''); setStreamingBlocks([])
                     setStreamingToolCalls([])
+                    setLastFailedMessage(null)
                     return
                 }
               } catch {}
@@ -279,6 +285,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession 
                     tool_calls: accToolCalls.length > 0 ? accToolCalls : null,
                   }])
                 }
+                setLastFailedMessage(null)
                 break
             }
           } catch {}

@@ -359,8 +359,8 @@ export async function streamChatMessage(opts) {
     // Skip tool_result messages — they're captured in the assistant text summary
   }
 
-  // Tool loop — generous limit, but prevents runaway loops
-  const MAX_TOOL_ITERATIONS = 20;
+  // Tool loop — essentially unlimited, safety net only
+  const MAX_TOOL_ITERATIONS = 2000;
   let iteration = 0;
   let fullAssistantText = '';
   let allToolCalls = [];

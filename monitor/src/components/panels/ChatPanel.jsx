@@ -115,9 +115,12 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
         const data = await res.json()
         if (data.session?.messages) setMessages(data.session.messages)
 
-        // If backend is NOT streaming, the response completed — clear retry banner
+        // If backend is NOT streaming, ensure frontend streaming state is cleared
         if (!data.streaming) {
-          // cleared
+          setStreaming(false)
+          setStreamingBlocks([])
+          setStreamingText('')
+          setStreamingToolCalls([])
         }
 
         // If backend is still streaming, show current content and reconnect

@@ -212,6 +212,8 @@ export default function ProjectView({
       setPrs([])
       setIssues([])
       setIssueFilter('open')
+      setChatPanelOpen(false)
+      setChatSession(null)
 
       fetchProjectData(true)
       const savedAgent = localStorage.getItem('selectedAgent')

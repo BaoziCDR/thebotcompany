@@ -477,11 +477,11 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
           {/* Streaming indicators */}
           {streaming && streamingBlocks.length > 0 && (
             <div className="flex justify-start mb-3">
-              <div className="max-w-[90%]">
-                {streamingBlocks.map((block, i) => (
+              <div className="max-w-[90%] space-y-1">
+                {streamingBlocks.filter(b => b.type === 'tool' || (b.content && b.content.trim())).map((block, i) => (
                   block.type === 'tool'
                     ? <ToolCallBlock key={block.id || i} name={block.name} input={block.input} output={block.output} />
-                    : <div key={i} className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                    : <div key={i} className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
                       </div>
                 ))}

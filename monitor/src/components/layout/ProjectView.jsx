@@ -6,7 +6,7 @@ import { Users, User, Sparkles, Settings, ScrollText, RefreshCw, Pause, Play, Ro
 import { PanelSlot, closeAllPanels } from '@/components/ui/panel'
 
 import Footer from '@/components/layout/Footer'
-import { OrchestratorStateCard, CostBudgetCard, ConfigCard } from '@/components/project/OrchestratorState'
+import { OrchestratorStateCard, CostBudgetCard } from '@/components/project/OrchestratorState'
 import WorkerCard from '@/components/project/WorkerCard'
 import IssuesSidebar from '@/components/project/IssuesSidebar'
 import HumanInterventionCard from '@/components/project/HumanInterventionCard'
@@ -715,6 +715,16 @@ export default function ProjectView({
               <CostBudgetCard
                 selectedProject={selectedProject}
                 setBudgetInfoModal={setBudgetInfoModal}
+                configForm={configForm}
+                configError={configError}
+                configDirty={configDirty}
+                configSaving={configSaving}
+                updateConfigField={updateConfigField}
+                resetConfig={resetConfig}
+                saveConfig={saveConfig}
+                isWriteMode={isWriteMode}
+                setIntervalInfoModal={setIntervalInfoModal}
+                setTimeoutInfoModal={setTimeoutInfoModal}
               />
 
               <HumanInterventionCard
@@ -729,20 +739,6 @@ export default function ProjectView({
                 onOpenChat={(session) => { setChatSession(session); setChatPanelOpen(true) }}
                 onNewChat={(session) => { setChatSession(session); setChatPanelOpen(true) }}
               />}
-
-              <ConfigCard
-                configForm={configForm}
-                configError={configError}
-                configDirty={configDirty}
-                configSaving={configSaving}
-                updateConfigField={updateConfigField}
-                resetConfig={resetConfig}
-                saveConfig={saveConfig}
-                isWriteMode={isWriteMode}
-                setIntervalInfoModal={setIntervalInfoModal}
-                setTimeoutInfoModal={setTimeoutInfoModal}
-                setBudgetInfoModal={setBudgetInfoModal}
-              />
 
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4" />Managers ({agents.managers.length})</CardTitle></CardHeader>

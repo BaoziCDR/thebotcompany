@@ -210,15 +210,6 @@ export function CostBudgetCard({ selectedProject, setBudgetInfoModal, configForm
               )}
             </>
           )}
-          <div className="pt-2 border-t">
-            <button
-              onClick={() => setBudgetInfoModal(true)}
-              className="text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              How budget works →
-            </button>
-          </div>
-
           {/* Configuration */}
           <div className="pt-3 border-t mt-3">
             <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">Configuration</h4>
@@ -304,6 +295,14 @@ export function CostBudgetCard({ selectedProject, setBudgetInfoModal, configForm
               </button>}
             </div>
           )}
+          <div className="pt-2 border-t mt-3">
+            <button
+              onClick={() => setBudgetInfoModal(true)}
+              className="text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              How budget works →
+            </button>
+          </div>
           </div>
         </div>
       </CardContent>

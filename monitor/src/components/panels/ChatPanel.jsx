@@ -85,7 +85,7 @@ function MessageBubble({ msg }) {
   )
 }
 
-export default function ChatPanel({ open, onClose, selectedProject, chatSession, onSessionCreated }) {
+export default function ChatPanel({ open, onClose, selectedProject, chatSession, onSessionCreated, modelTiers = {} }) {
   const { authFetch } = useAuth()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -519,10 +519,13 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
               onChange={(e) => setModelTier(e.target.value)}
               className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded text-neutral-700 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="high">High</option>
-              <option value="mid">Mid</option>
-              <option value="low">Low</option>
-              <option value="xlow">XLow</option>
+              {['high', 'mid', 'low', 'xlow'].map(tier => {
+                const info = modelTiers[tier]
+                const label = info?.model
+                  ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} — ${info.model}${info.reasoningEffort ? ` (${info.reasoningEffort})` : ''}`
+                  : tier.charAt(0).toUpperCase() + tier.slice(1)
+                return <option key={tier} value={tier}>{label}</option>
+              })}
             </select>
           </div>
           <div className="flex items-end gap-2">

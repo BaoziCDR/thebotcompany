@@ -462,21 +462,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
   return (
     <Panel id="chat" open={open} onClose={onClose}>
       <PanelHeader onClose={onClose}>
-        <div className="flex items-center justify-between w-full">
-          <span className="flex items-center gap-2">
-            💬 {chatSession?.title || 'Chat'}
-          </span>
-          <select
-            value={modelTier}
-            onChange={(e) => setModelTier(e.target.value)}
-            className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded text-neutral-700 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="high">High</option>
-            <option value="mid">Mid</option>
-            <option value="low">Low</option>
-            <option value="xlow">XLow</option>
-          </select>
-        </div>
+        💬 {chatSession?.title || 'Chat'}
       </PanelHeader>
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         {/* Messages area */}
@@ -524,8 +510,21 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
           </div>
         )}
 
-        {/* Input area */}
+        {/* Model selector + Input area */}
         <div className="border-t border-neutral-200 dark:border-neutral-700 p-3 bg-white dark:bg-neutral-800">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] text-neutral-400 dark:text-neutral-500">Model</span>
+            <select
+              value={modelTier}
+              onChange={(e) => setModelTier(e.target.value)}
+              className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded text-neutral-700 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="high">High</option>
+              <option value="mid">Mid</option>
+              <option value="low">Low</option>
+              <option value="xlow">XLow</option>
+            </select>
+          </div>
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}

@@ -89,6 +89,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
   const { authFetch } = useAuth()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [modelTier, setModelTier] = useState(chatSession?.model_tier || 'high')
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingToolCalls, setStreamingToolCalls] = useState([])
@@ -267,15 +268,29 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
 
   useEffect(() => { scrollToBottom() }, [messages, streamingText, streamingToolCalls])
 
-  // Reset streaming state and focus input when panel opens
+  // Reset streaming state and sync model tier when panel opens
   useEffect(() => {
     if (open) {
       setStreaming(false)
       setStreamingBlocks([])
       setStreamingText(''); setStreamingToolCalls([])
+      if (chatSession?.model_tier) setModelTier(chatSession.model_tier)
       if (inputRef.current) setTimeout(() => inputRef.current?.focus(), 350)
     }
   }, [open, chatSession?.id])
+
+  const changeModelTier = async (tier) => {
+    setModelTier(tier)
+    if (chatSession?.id && !chatSession._temp) {
+      try {
+        await authFetch(`/api/projects/${selectedProject.id}/chats/${chatSession.id}/model`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelTier: tier }),
+        })
+      } catch {}
+    }
+  }
 
   const sendMessage = async () => {
     if (!input.trim() || streaming || !chatSession || !selectedProject) return
@@ -288,7 +303,7 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
         const res = await authFetch(`/api/projects/${selectedProject.id}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ modelTier }),
         })
         if (!res.ok) return
         const data = await res.json()
@@ -458,9 +473,21 @@ export default function ChatPanel({ open, onClose, selectedProject, chatSession,
   return (
     <Panel id="chat" open={open} onClose={onClose}>
       <PanelHeader onClose={onClose}>
-        <span className="flex items-center gap-2">
-          💬 {chatSession?.title || 'Chat'}
-        </span>
+        <div className="flex items-center justify-between w-full">
+          <span className="flex items-center gap-2">
+            💬 {chatSession?.title || 'Chat'}
+          </span>
+          <select
+            value={modelTier}
+            onChange={(e) => changeModelTier(e.target.value)}
+            className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded text-neutral-700 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="high">High</option>
+            <option value="mid">Mid</option>
+            <option value="low">Low</option>
+            <option value="xlow">XLow</option>
+          </select>
+        </div>
       </PanelHeader>
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         {/* Messages area */}
